@@ -45,6 +45,10 @@ end, and keep the ones that were embarrassing — those are the ones that recur.
 - **Review against what actually runs.** Verify with `curl -i` and DevTools, not
   by reading the code or looking at the UI. Several bugs here were invisible from
   the browser and obvious in the response headers.
+- **Hint, don't solve.** When a review turns up a bug, first say *what* is wrong
+  and roughly where — the symptom and the area to look at, not the fix. Hand over
+  more specific hints only if Mau asks again. Corrected code is the last resort,
+  not the opening move. Finding it himself is the point of the exercise.
 - **Ask before answering.** When there's a design fork (status codes, data
   shapes), pose it as a question and ask for his reasoning first.
 - **Plain language.** No filler vocabulary. Precise technical terms are good and
