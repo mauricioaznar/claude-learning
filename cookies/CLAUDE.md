@@ -19,15 +19,26 @@ the password. 401 both when the cookie is missing and when the session is unknow
 Delete the session from the Map (the actual revocation), clear the cookie
 (housekeeping), respond 204.
 
-### 4 — expire sessions server-side ⬜
-`maxAge` only tells the *browser* to forget the cookie. The Map entry lives forever,
-so a copied session ID works indefinitely and the Map grows without bound.
+### 4 — expire sessions server-side 🚧
+`maxAge` only tells the *browser* to forget the cookie, so the Map entry outlived it
+and a copied session ID worked forever.
 
-- [ ] Store `{ userId, expiresAt }` instead of a bare user ID
-- [ ] On lookup, treat an expired session as invalid and delete it (lazy expiry)
-- [ ] Add a periodic sweep for sessions nobody ever revisits (eager expiry)
-- [ ] Keep the cookie's `maxAge` in sync with the server's expiry
-- [ ] Consider idle timeout (resets on activity) plus an absolute cap
+The session value became `{ id, expireAt, absoluteExpireAt }`. `expireAt` slides
+forward on every request (idle timeout), `absoluteExpireAt` is fixed at login and
+caps the total lifetime. Expired sessions are deleted on lookup and answer 401.
+The refreshed cookie carries the same `maxAge` so both clocks stay in step.
+
+- [x] Periodic sweep for sessions nobody ever returns to. Lazy deletion only cleans
+      up sessions someone comes back for, so abandoned ones accumulate. The sweep
+      only reclaims memory — `/api/me` is what enforces expiry — which is exactly
+      why its interval can be tuned freely on cost. If it were the enforcement
+      point, a 60s interval would be a 60s window for accepting dead sessions.
+- [ ] **Open: cap the two clocks against the absolute deadline.** Sliding expiry
+      pushes `expireAt` forward with no ceiling, so it can end up past
+      `absoluteExpireAt`, and the cookie's `Max-Age` can outlive the session by
+      most of its length. The capped deadline should be computed **once** as an
+      instant; the cookie's duration is then derived from it by subtraction.
+      Currently the cap is written but unreachable — see the last two failures.
 
 ### 5 — auth middleware + a protected route ⬜
 The session lookup is currently inlined in `/api/me`. Add a second protected route
@@ -104,6 +115,69 @@ truthy, so a user with `id: 0` would be rejected despite a valid session. Use
 **`res.user(401)` instead of `res.status(401)`.** Typo in a branch that almost
 never runs, which is exactly why it would have sat there undetected.
 
+**`Date.now() * MAX_AGE` instead of `+`.** Produced a timestamp so large that
+`new Date()` couldn't even render it — roughly 1.7 million years out. The
+comparison still ran, it was just always false, so nothing ever expired and the
+app behaved exactly as before. Arithmetic on timestamps fails silently. Naming
+helped hide it: the field was called `absoluteMaxAge` but held an *instant*, and
+next to a duration constant `*` looked as plausible as `+`. Durations get
+`MAX_AGE` names, instants get `expiresAt` names.
+
+**Expiry check deleted the session but didn't `return`.** Execution fell through,
+the local `session` variable was still in scope, and the code below issued a fresh
+session — deleting the expired one and immediately replacing it. Every rejection
+path has to both stop and respond.
+
+**Rotated the session ID on every request.** Meant as sliding expiry, but it
+creates a race: two requests in flight both carry the old ID, the first deletes it,
+and the second gets a spurious 401. Sliding expiry only needs the stored
+`expireAt` pushed forward — the object in the Map can be mutated in place. Rotation
+is a real technique, but it belongs at login, to prevent session fixation.
+
+**Wrote `session.expiresAt` while everything else read `expireAt`.** JavaScript
+happily created a second property. No error, and sliding expiry silently did
+nothing. The kind of bug TypeScript catches on sight.
+
+**Left `newSessionId` referenced after deleting the code that defined it.** 500 on
+every successful `/api/me`. The loud counterpart to the silent typo above — both
+were one-word mistakes, but only one announced itself.
+
+**Re-sent the cookie without `maxAge`.** Re-sending replaces the cookie outright,
+so the omitted field turned a 10-second persistent cookie into a session cookie
+that lives until the browser closes — the opposite of keeping the two clocks in
+sync. `curl` exposed it faster than a browser would: its jar file only stores
+persistent cookies, so the cookie vanished between requests and every call 401'd.
+
+**`SESSION_MAP[key]` instead of `SESSION_MAP.get(key)`.** Threw a TypeError inside a
+`setInterval` callback, which nothing catches, so it killed the whole process — the
+server was simply gone two seconds after a login. A `Map` keeps its entries in an
+internal slot, not as object properties, so bracket access finds nothing and returns
+`undefined`. The write direction is worse: `map[key] = v` silently creates a real
+property that `.get`, `.size`, and iteration all ignore.
+
+**`app.listen(...).close(cb)` chained in one expression.** Meant as "clean up when the
+server closes", but `.close()` is a call, not a subscription — it ran immediately and
+shut the server down before it finished coming up. The process exited with code **0**
+and printed nothing at all, not even the startup URL, because the `listen` callback
+never fired. A successful exit is a nastier symptom than a crash.
+
+**`app.close()` in the SIGTERM handler.** `app` is the request handler; `app.listen()`
+returns the `http.Server`. Only the server owns the socket, so only the server has
+`close`. Lived in a branch that never runs in development — found only by actually
+sending the signal.
+
+**Compared a duration to an instant: `SHORT_MAX_AGE >= session.absoluteExpireAt`.**
+`10000` versus `1786298953000`. Always false, so both branches of the new cap were
+unreachable and the feature did nothing. The naming rule from the last round —
+durations get `MAX_AGE` names, instants get `expiresAt` names — was already written
+down, and both names were sitting on opposite sides of the same operator.
+
+**Operator precedence: `Date.now() + flag ? a : b`.** `+` binds tighter than `?:`, so
+the condition tested is `Date.now() + flag`, which is always truthy — one branch is
+dead. Silent again: sessions still expired, just always on the absolute deadline, so
+the idle timeout quietly stopped existing. Only visible by pinning the cookie by hand
+and timing the status codes.
+
 ## Learnings
 
 **HTTP is stateless.** Every request arrives with no memory of the last one. A
@@ -142,6 +216,39 @@ the routes.
 
 **`fetch` doesn't throw on 4xx/5xx.** Only on network failure. Always check
 `res.ok`.
+
+**Two kinds of timeout, and real systems want both.** An *idle* timeout resets on
+activity, so working users aren't interrupted. An *absolute* timeout is fixed at
+login and can't be extended — without it, a stolen session ID stays alive forever
+just by being used.
+
+**Session cookie vs persistent cookie.** No `Max-Age` or `Expires` means the
+browser keeps it in memory and drops it when the window closes. With one, it goes
+to disk and survives a restart. Re-sending a cookie replaces the whole thing, so
+any option left out is lost.
+
+**Timestamps fail quietly.** Bad date arithmetic doesn't crash, it just produces a
+comparison that never fires. Test expiry with seconds-long timeouts and watch the
+status codes; you cannot see this by reading the code.
+
+**Map keys vs object keys.** Object property keys can only be strings or symbols;
+anything else is coerced, so two different objects both become `"[object Object]"`
+and collide into one slot. Map keys can be any value and are compared by identity —
+`map.get({a:1})` misses an entry stored under a structurally identical object. Maps
+also keep insertion order and give `.size` in constant time.
+
+**Lazy expiry and the sweep answer different questions.** Lazy deletion on read is
+what *enforces* expiry; the periodic sweep only reclaims memory from sessions nobody
+returns to. Keep both, and never let the security property depend on the sweep's
+interval — that interval is a performance knob.
+
+**Signals.** `SIGTERM` is a polite "shut down" request from `kill`, Docker, systemd.
+You can catch it and drain: stop accepting connections, finish in-flight requests,
+close the pools, exit. `SIGINT` is `Ctrl-C`. `SIGKILL` (`kill -9`) cannot be caught.
+Orchestrators send SIGTERM, wait ~30s, then SIGKILL — so anything keeping the event
+loop alive, like a pending `setInterval`, is what stops you exiting in that window.
+`clearInterval` on shutdown is explicit; `timer.unref()` is the blunt version that
+just stops the timer counting as a reason to stay running.
 
 ## Things that keep biting
 

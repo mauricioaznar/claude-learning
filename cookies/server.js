@@ -7,6 +7,13 @@ const app = express();
 const PORT = 3000;
 const PUBLIC_DIR = path.join(import.meta.dirname, "public");
 
+const SHORT_MAX_AGE = 10 * 1000; // 10 seconds
+const ABSOLUTE_MAX_AGE = 20 * 1000// 20 seconds
+const SWEEP_INTERVAL = 15 * 1000 // 15 seconds
+
+
+const COOKIE_NAME = "session_id"
+
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
 app.use(cookieParser())
@@ -28,6 +35,11 @@ function findUserById(id) {
   return USERS.find((u) => u.id === id);
 }
 
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // EXERCISE 1 — log in and hand the browser a cookie
 // ---------------------------------------------------------------------------
@@ -41,9 +53,9 @@ app.post("/api/login", (req, res) => {
 
   const userSessionId = crypto.randomUUID()
 
-  SESSION_MAP.set(userSessionId, user.id)
+  SESSION_MAP.set(userSessionId, { id: user.id, expireAt: Date.now() + SHORT_MAX_AGE, absoluteExpireAt: Date.now() + ABSOLUTE_MAX_AGE})
 
-  res.cookie('session_id', userSessionId, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 1000 })
+  res.cookie(COOKIE_NAME, userSessionId, { httpOnly: true, sameSite: "lax", maxAge: SHORT_MAX_AGE})
 
   return res.json( "Login successfully" );
 });
@@ -54,19 +66,37 @@ app.post("/api/login", (req, res) => {
 app.get("/api/me", (req, res) => {
   const cookies = req.cookies
 
-  const sessionId = cookies.session_id;
+  const sessionId = cookies[COOKIE_NAME];
 
   if (!sessionId || !SESSION_MAP.has(sessionId)) {
     return res.status(401).json({error: "Invalid session"});
   }
 
-  const userId = SESSION_MAP.get(sessionId)
+  // check session expiration on memory
+  const session = SESSION_MAP.get(sessionId)
 
-  const user = findUserById(userId);
+
+  //check if session has expired absolutely
+  if(Date.now() > session.expireAt ||  Date.now() > session.absoluteExpireAt  ) {
+    SESSION_MAP.delete(sessionId);
+    res.clearCookie(COOKIE_NAME)
+    return res.status(401).json({ error: "Session expired login again" });
+  }
+
+  const user = findUserById(session.id);
 
   if (!user) {
-    return res.status(401).json({ error: "Invalid user id" });
+    return res.status(401).json({ error: "Invalid user" });
   }
+
+  let suggestedExpirationSurpassesAbsolute = SHORT_MAX_AGE >= session.absoluteExpireAt
+
+  res.cookie(COOKIE_NAME, sessionId, {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: suggestedExpirationSurpassesAbsolute ? session.absoluteExpireAt - Date.now() : SHORT_MAX_AGE
+  })
+  session.expireAt = Date.now() + suggestedExpirationSurpassesAbsolute? session.absoluteExpireAt : Date.now() +  SHORT_MAX_AGE;
 
   // and reply with the user. If there is no valid session, reply 401.
   return res.status(200).json({...user, password: undefined } );
@@ -85,7 +115,7 @@ app.post("/api/logout", (req, res) => {
 
   // http only removes document.cookie prevents theft
   // sameSite: "lax" only from same origin. other domains cannot send the cookie through, will get rejected. links are ok from other webiste to this domain localhost:3000, strict prevents those links from sending the cookie
-  res.clearCookie("session_id", { httpOnly: true, sameSite: "lax" });
+  res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: "lax" });
 
   SESSION_MAP.delete(sessionId)
 
@@ -98,6 +128,29 @@ app.get("/*splat", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
-app.listen(PORT, () => {
+
+let intervalRef = null
+const server = app.listen(PORT, () => {
   console.log(`http://localhost:${PORT}`);
+
+  intervalRef =setInterval(() => {
+    const deletedKeys = []
+    SESSION_MAP.keys().forEach(key => {
+      const session = SESSION_MAP.get(key)
+      // expires at reflects the true expiration date so no need to include the absolute here since there is a ceiling
+      if (Date.now() > session.expireAt) {
+        deletedKeys.push(key)
+      }
+    })
+
+    deletedKeys.forEach(key => {
+      SESSION_MAP.delete(key)
+    })
+  }, SWEEP_INTERVAL) // set timing on set interval into an amount not to small (too frequent) or to big (avoid saved stale sessions)// to avoid loading server.
+})
+
+process.on("SIGTERM", () => {
+  server.close(() => {
+    clearInterval(intervalRef);
+  });
 });

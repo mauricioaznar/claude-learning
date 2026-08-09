@@ -25,8 +25,8 @@ function loginView() {
     <section class="card">
       <h1>Sign in</h1>
       <form id="login-form">
-        <label>Username <input name="username" autocomplete="username" required /></label>
-        <label>Password <input name="password" type="password" autocomplete="current-password" required /></label>
+        <label>Username <input name="username" autocomplete="username" required value="mau" /></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required value="hunter2" /></label>
         <button type="submit">Log in</button>
       </form>
       <p class="hint">Try <code>mau</code> / <code>hunter2</code></p>
