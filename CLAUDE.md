@@ -4,9 +4,23 @@ A learning lab. Each subfolder is a self-contained side project for learning one
 topic by building it from scratch. Nothing here is production code — the goal is
 that Mau can rebuild each feature unaided later.
 
-Current projects:
+## Projects
 
-- `cookies/` — cookie-based session auth (Express + a small SPA)
+| Project | Topic | Status |
+| --- | --- | --- |
+| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–3 done, on 4 — server-side expiry |
+
+Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
+for detail. Update it **when an exercise completes**, not on every commit, so
+progress has a single source of truth and project work doesn't keep touching a
+shared file.
+
+## Starting work
+
+Mau names the project explicitly at the start of a session — don't infer it from
+context. For a new project he describes what he wants to learn or build; suggest
+a set of topics and an exercise path, and refine it together **before writing any
+code**. Only start once the path is agreed.
 
 ## Every side project keeps its own CLAUDE.md
 
