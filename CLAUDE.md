@@ -8,7 +8,7 @@ that Mau can rebuild each feature unaided later.
 
 | Project | Topic | Status |
 | --- | --- | --- |
-| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–3 done, on 4 — server-side expiry |
+| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–4 done, on 5 — auth middleware |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so
@@ -42,9 +42,15 @@ end, and keep the ones that were embarrassing — those are the ones that recur.
   outright, but leave the concept under study for Mau to write.
 - **One exercise at a time.** Explain the idea, let him attempt it, then review.
   Don't reveal the next step early, and don't pre-empt his attempt with code.
-- **Review against what actually runs.** Verify with `curl -i` and DevTools, not
-  by reading the code or looking at the UI. Several bugs here were invisible from
-  the browser and obvious in the response headers.
+- **Review statically; Mau runs the code.** Read the code and reason about it —
+  don't start the server, run `curl`, or otherwise execute the project to answer
+  a question. When a runtime check would genuinely settle something, *propose*
+  it: say what to run and what each outcome would prove, then let Mau run it and
+  report back. Running it for him costs tokens and takes away the half of the
+  exercise where he learns to interrogate a live system.
+- **Runtime checks still decide the truth.** `curl -i` and DevTools are what
+  confirm a fix — several bugs here were invisible from the browser and obvious
+  in the response headers. That verification just happens on Mau's side.
 - **Hint, don't solve.** When a review turns up a bug, first say *what* is wrong
   and roughly where — the symptom and the area to look at, not the fix. Hand over
   more specific hints only if Mau asks again. Corrected code is the last resort,

@@ -37,7 +37,47 @@ function findUserById(id) {
 
 
 
+// ---------------------------------------------------------------------------
+// EXERCISE 5 — auth middleware
+// ---------------------------------------------------------------------------
 
+function setCookie(res, cookieValue, duration) {
+  res.cookie(COOKIE_NAME, cookieValue, { maxAge: duration, httpOnly: true, sameSite: 'lax' });
+}
+
+
+function auth (req, res, next) {
+  const cookieValueUUID = req.cookies[COOKIE_NAME]
+
+  if (!cookieValueUUID || !SESSION_MAP.has(cookieValueUUID)) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  const session = SESSION_MAP.get(cookieValueUUID)
+  const now = Date.now()
+  const userId = session.id;
+  const user = findUserById(userId);
+
+  if (!user || now > session.expireAt || now > session.absoluteExpireAt) {
+    SESSION_MAP.delete(cookieValueUUID)
+    res.clearCookie(COOKIE_NAME)
+    return res.status(401).send("Unauthorized");
+  }
+
+
+
+  const deadline = Math.min(SHORT_MAX_AGE + now, session.absoluteExpireAt);
+  setCookie(res, cookieValueUUID, deadline - now);
+  session.expireAt = deadline;
+
+
+
+
+
+  req.user = {...user, password: undefined}
+
+  next()
+}
 
 
 // ---------------------------------------------------------------------------
@@ -54,52 +94,16 @@ app.post("/api/login", (req, res) => {
   const userSessionId = crypto.randomUUID()
 
   SESSION_MAP.set(userSessionId, { id: user.id, expireAt: Date.now() + SHORT_MAX_AGE, absoluteExpireAt: Date.now() + ABSOLUTE_MAX_AGE})
-
-  res.cookie(COOKIE_NAME, userSessionId, { httpOnly: true, sameSite: "lax", maxAge: SHORT_MAX_AGE})
-
+  setCookie(res, userSessionId, SHORT_MAX_AGE)
   return res.json( "Login successfully" );
 });
 
 // ---------------------------------------------------------------------------
 // EXERCISE 2 — read the cookie back and say who is logged in
 // ---------------------------------------------------------------------------
-app.get("/api/me", (req, res) => {
-  const cookies = req.cookies
-
-  const sessionId = cookies[COOKIE_NAME];
-
-  if (!sessionId || !SESSION_MAP.has(sessionId)) {
-    return res.status(401).json({error: "Invalid session"});
-  }
-
-  // check session expiration on memory
-  const session = SESSION_MAP.get(sessionId)
-
-
-  //check if session has expired absolutely
-  if(Date.now() > session.expireAt ||  Date.now() > session.absoluteExpireAt  ) {
-    SESSION_MAP.delete(sessionId);
-    res.clearCookie(COOKIE_NAME)
-    return res.status(401).json({ error: "Session expired login again" });
-  }
-
-  const user = findUserById(session.id);
-
-  if (!user) {
-    return res.status(401).json({ error: "Invalid user" });
-  }
-
-  let suggestedExpirationSurpassesAbsolute = SHORT_MAX_AGE >= session.absoluteExpireAt
-
-  res.cookie(COOKIE_NAME, sessionId, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: suggestedExpirationSurpassesAbsolute ? session.absoluteExpireAt - Date.now() : SHORT_MAX_AGE
-  })
-  session.expireAt = Date.now() + suggestedExpirationSurpassesAbsolute? session.absoluteExpireAt : Date.now() +  SHORT_MAX_AGE;
-
-  // and reply with the user. If there is no valid session, reply 401.
-  return res.status(200).json({...user, password: undefined } );
+app.get("/api/me", auth, (req, res) => {
+  // auth middleware sets the user object
+  return res.status(200).json(req.user );
 });
 
 // ---------------------------------------------------------------------------
