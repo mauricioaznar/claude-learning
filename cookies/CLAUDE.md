@@ -108,7 +108,8 @@ Decisions made, with the reasoning:
       unrepresentable.
 
 **Pick up here tomorrow: "The contract of `setCookie`" below.** There's an open
-question at the end waiting for an answer.
+question at the end waiting for an answer — and that section is temporary, so
+delete it once the question is settled and fold the outcome back into this list.
 
 ### 6 — persist sessions in MySQL ⬜
 The point isn't SQL, it's that swapping the Map for a table barely changes the
@@ -141,6 +142,12 @@ Tokens matter for mobile apps, third-party API access, and services that can't
 share a session store.
 
 ## The contract of `setCookie`
+
+> **Temporary — delete this whole section once the open question at the end is
+> settled.** It's a parked conversation, not a learning. When it's resolved, the
+> decision and its reasoning go into Exercise 5 (a line or two) and anything that
+> generalises goes into Learnings. Leaving it here would turn the notebook into a
+> transcript.
 
 Written out in full because it's the open thread in Exercise 5, and because the
 reasoning matters more than the conclusion.
