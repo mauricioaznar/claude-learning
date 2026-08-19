@@ -41,9 +41,40 @@ function findUserById(id) {
 // EXERCISE 5 — auth middleware
 // ---------------------------------------------------------------------------
 
+const durationGuard = function (duration) {
+  const oneDay = 86400000 // one day
+
+  if (duration >= oneDay) {
+    throw new Error('Duration longer than one day')
+  }
+
+  if (duration <= 0) {
+    throw new Error('Duration is less than 0')
+  }
+}
+
+const getCookiesOptions = function (duration = undefined){
+  const options = { httpOnly: true, sameSite: 'lax' }
+
+  if (duration !== undefined) {
+    options.maxAge= duration
+  }
+  return  options
+}
+
+
+
 function setCookie(res, cookieValue, start, end) {
 
-  res.cookie(COOKIE_NAME, cookieValue, { maxAge: end - start, httpOnly: true, sameSite: 'lax' });
+  const duration = end - start
+
+  durationGuard(duration)
+
+  res.cookie(COOKIE_NAME, cookieValue, getCookiesOptions(duration));
+}
+
+function clearCookie(res) {
+  res.clearCookie(COOKIE_NAME, getCookiesOptions())
 }
 
 
@@ -61,7 +92,7 @@ function auth (req, res, next) {
 
   if (!user || now > session.expireAt || now > session.absoluteExpireAt) {
     SESSION_MAP.delete(cookieValueUUID)
-    res.clearCookie(COOKIE_NAME)
+    clearCookie(res)
     return res.status(401).send("Unauthorized");
   }
 
@@ -70,6 +101,8 @@ function auth (req, res, next) {
   const deadline = Math.min(SHORT_MAX_AGE + now, session.absoluteExpireAt);
   setCookie(res, cookieValueUUID, now, deadline);
   session.expireAt = deadline;
+
+
 
   req.user = {...user, password: undefined}
 
@@ -90,8 +123,12 @@ app.post("/api/login", (req, res) => {
 
   const userSessionId = crypto.randomUUID()
 
-  SESSION_MAP.set(userSessionId, { id: user.id, expireAt: Date.now() + SHORT_MAX_AGE, absoluteExpireAt: Date.now() + ABSOLUTE_MAX_AGE})
-  setCookie(res, userSessionId, Date.now(), Date.now() + SHORT_MAX_AGE)
+  const now = Date.now()
+  const slideExpireAt = now + SHORT_MAX_AGE
+  const absoluteEnd= now  + ABSOLUTE_MAX_AGE
+
+  SESSION_MAP.set(userSessionId, { id: user.id, expireAt: slideExpireAt, absoluteExpireAt: absoluteEnd})
+  setCookie(res, userSessionId, now, slideExpireAt)
   return res.json( "Login successfully" );
 });
 
@@ -123,8 +160,7 @@ app.post("/api/logout", (req, res) => {
 
   // http only removes document.cookie prevents theft
   // sameSite: "lax" only from same origin. other domains cannot send the cookie through, will get rejected. links are ok from other webiste to this domain localhost:3000, strict prevents those links from sending the cookie
-  res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: "lax" });
-
+  clearCookie(res)
   SESSION_MAP.delete(sessionId)
 
   return res.sendStatus(204);
