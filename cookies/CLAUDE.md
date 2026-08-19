@@ -48,7 +48,7 @@ arithmetic reason about different instants; capture one `now` at the top. The
 deadline variable is named `candidate`, which doesn't say instant. And login
 computes its deadline without the cap, so the rule lives in two places.
 
-### 5 — auth middleware + a protected route 🚧
+### 5 — auth middleware + a protected route ✅
 The session lookup is currently inlined in `/api/me`. Add a second protected route
 and you'd copy-paste it.
 
@@ -92,15 +92,16 @@ Decisions made, with the reasoning:
 - [x] Add `/api/secret` and guard it with that middleware
 - [x] Logout: 204 for both paths (revoked a session, or nothing to revoke). Both are
       successes with no body, which makes them identical to the caller — idempotent.
-- [ ] Share the cookie options with both `clearCookie` calls, not just the two
-      `res.cookie` calls
-- [ ] Settle the helper's signature and add a guard clause — see "The contract of
-      `setCookie`" section below for the full discussion state
+- [x] Share the cookie options with both `clearCookie` calls — extracted
+      `getCookiesOptions()` so set and clear use the same attributes
+- [x] Guard clause on the duration: throws if `<= 0` or `>= oneDay`, turning
+      the instant-as-duration mistake from a silent 56-year cookie into a crash
+- [x] One `now` at the top of login — four `Date.now()` calls collapsed to one
 
-**Pick up here: the `setCookie` contract section below.** The open question has been
-narrowed — it's now about choosing between two-instants or duration-with-guard, and
-either way the function needs a guard clause and login needs one `now`. The section
-is still temporary; delete it once the choice is made.
+Settled: two-instants signature `(res, cookieValue, start, end)` with a guard
+clause that throws on non-positive or absurdly large durations. Cookie options
+shared via `getCookiesOptions()` so set and clear can't drift apart. The helper
+stays a pure output function — it doesn't own the session invariant.
 
 ### 6 — persist sessions in MySQL ⬜
 The point isn't SQL, it's that swapping the Map for a table barely changes the
@@ -131,149 +132,6 @@ fork: a session ID is a coat-check ticket, a JWT is a signed passport.
 For a browser SPA like this one, cookie sessions are usually the better choice.
 Tokens matter for mobile apps, third-party API access, and services that can't
 share a session store.
-
-## The contract of `setCookie`
-
-> **Temporary — delete this whole section once the open question at the end is
-> settled.** It's a parked conversation, not a learning. When it's resolved, the
-> decision and its reasoning go into Exercise 5 (a line or two) and anything that
-> generalises goes into Learnings. Leaving it here would turn the notebook into a
-> transcript.
-
-Written out in full because it's the open thread in Exercise 5, and because the
-reasoning matters more than the conclusion.
-
-A function's contract is the pair of promises around it: what it **demands of
-callers** (preconditions) and what it **guarantees in return** (postconditions).
-Most of `setCookie`'s is currently implicit — true, but written nowhere and checked
-by nothing.
-
-### What it demands, whether it's written down or not
-
-**`res` hasn't sent yet.** Call it after `res.json()` and you get
-`ERR_HTTP_HEADERS_SENT` — a failure already in the list below. The helper makes it
-slightly *easier* to hit, because the call no longer looks like header
-manipulation; it looks like a data operation.
-
-**`cookieValue` is a session id that actually exists in the Map.** Nothing checks.
-Hand it any string and you get a perfectly well-formed cookie pointing at nothing;
-the failure surfaces one request later as a 401 that looks like an expiry bug.
-
-**`duration` is a positive integer of milliseconds.** Three ways to violate it,
-with very different loudness:
-
-| Passed | Result |
-| --- | --- |
-| a Map | throws — loud, found in minutes |
-| an **instant** | `Max-Age` ≈ 56 years. Silent. Cookie never expires. |
-| ≤ 0 | browser deletes the cookie immediately |
-
-The middle row is the one to worry about. Same number type, positional slot, and
-the failure is a cookie that outlives its session forever — the precise bug
-Exercise 4 existed to fix, reintroducible in one keystroke.
-
-The third row isn't hypothetical either. The guard is
-`now > session.absoluteExpireAt`, so `now === absoluteExpireAt` passes it, and then
-`deadline - now` is exactly `0`. Narrow, but a real boundary the contract permits.
-
-### What it guarantees — and the gap
-
-It appends a `Set-Cookie` header and doesn't send the response. Fine.
-
-But look at what it **doesn't** do: it doesn't touch `session.expireAt`. The
-invariant Exercise 4 established is *the cookie's lifetime and the session's
-deadline describe the same moment*, and this function writes one half of that pair
-while the caller writes the other.
-
-```
-middleware:  setCookie(res, id, deadline - now)   ← half one
-             session.expireAt = deadline          ← half two
-
-login:       expireAt: Date.now() + SHORT_MAX_AGE ← half two
-             setCookie(res, id, SHORT_MAX_AGE)    ← half one
-```
-
-In the middleware they're adjacent and share `deadline`, so they agree
-structurally. At login they're derived independently from two different
-expressions and agree only because the constants happen to line up. Change
-`SHORT_MAX_AGE` in one place and forget the other, or `return` between the two
-statements, and the halves diverge silently — server thinks the session is alive
-while the browser has already dropped the cookie, or the reverse.
-
-**So the invariant is maintained by convention at each call site, not by the
-function.** That is the actual weakness in the contract.
-
-### Three ways to strengthen it, in ascending cost
-
-**Name things so the contract is legible.** `setCookie` sets *one specific* cookie
-— a session cookie with `httpOnly` and `sameSite` baked in. The generic name is an
-invitation for a future theme-preference cookie to get routed through it and
-silently inherit session semantics. `sendSessionCookie` says which cookie,
-`durationMs` says which kind of number. Costs nothing, catches nothing — but it's
-what makes the next two worth doing.
-
-**Add a guard clause.** Throw if `duration` isn't a positive integer. This converts
-the worst failure mode from silent to loud: the instant-as-duration mistake becomes
-a crash on the first request instead of an immortal cookie discovered in three
-weeks. Cheap, and the single highest-value change here.
-
-**Move the invariant inside the function.** Pass it the session and the deadline,
-and let it both send the cookie *and* set `expireAt`. Then the two halves can't
-diverge, because there's no way to do one without the other.
-
-That third one cuts against something already learned here. It makes the function
-do two things — send a header and mutate state — which is the command-query
-separation problem correctly identified in `/api/me`. The counterargument: these
-aren't two things. "Record this deadline on both sides" is one concept that
-happens to require two writes. CQS is about not hiding side effects behind a
-*query*; this function is already a command, and it would just become an honest one.
-
-### Answered: the helper stays a pure output function
-
-The helper does not own the invariant. Mutating `session.expireAt` inside a function
-named `setCookie` / `sendSessionCookie` violates command-query separation — the name
-says what it does, and changing the session is not that. A `setCookieAndSession` name
-is a smell, not a fix. The caller keeps the halves in step; the helper just sends
-the header.
-
-### Narrowed but not settled: duration or two instants?
-
-**Two-instants `(res, cookieValue, start, end)`** — tried and reverted. It's more
-explicit to the consumer (the caller already has both instants from the session
-object), but it introduced `Date.now()` called four times in login, violating the
-"one `now` per request" rule. The subtraction `end - start` still lives inside the
-helper, and the guard problem doesn't disappear — an unreasonably large *gap* between
-two instants is just as hard to validate as an unreasonably large duration; either
-way the ceiling is an arbitrary number.
-
-**Duration `(res, cookieValue, durationMs)`** — simpler (fewer params), and
-`res.cookie` itself takes a duration, so the API isn't unusual. The weakness is that
-nothing stops login from passing an uncapped constant like `SHORT_MAX_AGE` without
-the `Math.min` cap the middleware applies. But that's not the helper's job to fix —
-a guard clause catches the *wrong kind* of number (instant-as-duration), not the
-*wrong magnitude* of a correct kind.
-
-**Either way, both remaining items apply:**
-
-1. **Guard clause.** Throw if the computed duration exceeds a sane ceiling (e.g. one
-   day) or is non-positive. This turns the worst failure — an instant passed as a
-   duration producing a 56-year cookie — from silent to loud. The ceiling is
-   arbitrary, but the gap between any reasonable duration (~10s of thousands of ms)
-   and any timestamp (~1.7 trillion) is so wide that any plausible ceiling catches it.
-
-2. **One `now` at the top of login.** The middleware already captures `now` once.
-   Login currently calls `Date.now()` independently for `expireAt`, `absoluteExpireAt`,
-   and the cookie — up to four different instants for one moment. Capture one `now`
-   and derive everything from it.
-
-### `clearCookie` still belongs in this discussion
-
-One call passes no options, the other passes `{ httpOnly, sameSite }`. Both work
-today only because Express matches on name and path, and path defaults to `/`
-everywhere. Add `Secure` or a `path` to the setter and one of those clears stops
-matching — a cookie that survives logout, invisible from the UI, exactly like the
-`clearCookie(sessionId)` failure below. Whatever owns the cookie's attributes should
-own clearing it too.
 
 ## Failures
 
@@ -503,6 +361,20 @@ impossible one.
 what *enforces* expiry; the periodic sweep only reclaims memory from sessions nobody
 returns to. Keep both, and never let the security property depend on the sweep's
 interval — that interval is a performance knob.
+
+**A function's contract is preconditions + postconditions.** What it demands of
+callers, and what it guarantees in return. Most contracts are implicit — true but
+checked by nothing. A guard clause makes a precondition explicit by throwing on
+violation, converting a silent wrong answer into a loud crash. The best guard
+clauses cover failure modes where the wrong input is the same type as the right
+one — an instant where a duration belongs is still a number, but the gap between
+any reasonable duration (~10k ms) and any timestamp (~1.7 trillion) is so wide
+that a ceiling like one day catches it reliably.
+
+**Centralise cookie attributes.** If set and clear don't share the same options
+object, adding `Secure` or a `path` to the setter and forgetting the clear
+produces a cookie that survives logout — invisible from the UI, exactly like the
+`clearCookie(sessionId)` bug from Exercise 3.
 
 **Signals.** `SIGTERM` is a polite "shut down" request from `kill`, Docker, systemd.
 You can catch it and drain: stop accepting connections, finish in-flight requests,
