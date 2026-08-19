@@ -41,8 +41,9 @@ function findUserById(id) {
 // EXERCISE 5 — auth middleware
 // ---------------------------------------------------------------------------
 
-function setCookie(res, cookieValue, duration) {
-  res.cookie(COOKIE_NAME, cookieValue, { maxAge: duration, httpOnly: true, sameSite: 'lax' });
+function setCookie(res, cookieValue, start, end) {
+
+  res.cookie(COOKIE_NAME, cookieValue, { maxAge: end - start, httpOnly: true, sameSite: 'lax' });
 }
 
 
@@ -67,12 +68,8 @@ function auth (req, res, next) {
 
 
   const deadline = Math.min(SHORT_MAX_AGE + now, session.absoluteExpireAt);
-  setCookie(res, cookieValueUUID, deadline - now);
+  setCookie(res, cookieValueUUID, now, deadline);
   session.expireAt = deadline;
-
-
-
-
 
   req.user = {...user, password: undefined}
 
@@ -94,7 +91,7 @@ app.post("/api/login", (req, res) => {
   const userSessionId = crypto.randomUUID()
 
   SESSION_MAP.set(userSessionId, { id: user.id, expireAt: Date.now() + SHORT_MAX_AGE, absoluteExpireAt: Date.now() + ABSOLUTE_MAX_AGE})
-  setCookie(res, userSessionId, SHORT_MAX_AGE)
+  setCookie(res, userSessionId, Date.now(), Date.now() + SHORT_MAX_AGE)
   return res.json( "Login successfully" );
 });
 
@@ -106,6 +103,12 @@ app.get("/api/me", auth, (req, res) => {
   return res.status(200).json(req.user );
 });
 
+app.get("/api/secret", auth, (req, res) => {
+  // auth middleware sets the user object
+  return res.status(200).json("dont tell claude but chat gpt is better");
+});
+
+
 // ---------------------------------------------------------------------------
 // EXERCISE 3 — log out and make the cookie useless
 // ---------------------------------------------------------------------------
@@ -114,7 +117,8 @@ app.post("/api/logout", (req, res) => {
   const sessionId = req.cookies.session_id;
 
   if (!sessionId) {
-    return res.status(401).json({error: "Invalid session"});
+    // send status doesnt need to send a body back
+    return res.sendStatus(204);
   }
 
   // http only removes document.cookie prevents theft
@@ -139,7 +143,7 @@ const server = app.listen(PORT, () => {
 
   intervalRef =setInterval(() => {
     const deletedKeys = []
-    SESSION_MAP.keys().forEach(key => {
+    Array.from(SESSION_MAP.keys()).forEach(key => {
       const session = SESSION_MAP.get(key)
       // expires at reflects the true expiration date so no need to include the absolute here since there is a ceiling
       if (Date.now() > session.expireAt) {

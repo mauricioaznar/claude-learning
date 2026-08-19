@@ -87,29 +87,20 @@ Decisions made, with the reasoning:
   clear, and which wins depends on header order.
 
 - [x] Extract the lookup into middleware that sets `req.user`, or 401s
-- [ ] Fix the two `ReferenceError`s below — login and `/api/me` both 500 right now
-- [ ] Add `/api/secret` and guard it with that middleware
-- [ ] Logout: return success when the cookie is missing (nothing to revoke is not a
-      failure). Open question — the success path returns 204, so decide whether the
-      already-logged-out path is 204 too or 200. The SPA doesn't read the response.
+- [x] Fix the two `ReferenceError`s — login uses `userSessionId`, middleware uses
+      `cookieValueUUID` consistently now
+- [x] Add `/api/secret` and guard it with that middleware
+- [x] Logout: 204 for both paths (revoked a session, or nothing to revoke). Both are
+      successes with no body, which makes them identical to the caller — idempotent.
 - [ ] Share the cookie options with both `clearCookie` calls, not just the two
       `res.cookie` calls
-- [ ] Decide the helper's signature — **duration or deadline instant?** Not a
-      deduplication question: the subtraction already happens in exactly one place,
-      because login passes a constant. The argument for taking an instant is that it
-      *constrains the caller*. A duration parameter lets login pass `SHORT_MAX_AGE`
-      uncapped, which is the leftover from Exercise 4 and is still live. An instant
-      parameter makes login produce a deadline — the same instant it stores in the
-      session — so the cookie and the session can't disagree at login the way they
-      couldn't in the middleware. Today they're computed separately: line 96 stores
-      `now + SHORT_MAX_AGE`, line 97 sends `SHORT_MAX_AGE`. Two things that must
-      agree, derived independently. Passing a duration is a perfectly normal API
-      (`res.cookie` itself does it) — the question is only which mistakes it makes
-      unrepresentable.
+- [ ] Settle the helper's signature and add a guard clause — see "The contract of
+      `setCookie`" section below for the full discussion state
 
-**Pick up here tomorrow: "The contract of `setCookie`" below.** There's an open
-question at the end waiting for an answer — and that section is temporary, so
-delete it once the question is settled and fold the outcome back into this list.
+**Pick up here: the `setCookie` contract section below.** The open question has been
+narrowed — it's now about choosing between two-instants or duration-with-guard, and
+either way the function needs a guard clause and login needs one `now`. The section
+is still temporary; delete it once the choice is made.
 
 ### 6 — persist sessions in MySQL ⬜
 The point isn't SQL, it's that swapping the Map for a table barely changes the
@@ -237,18 +228,52 @@ aren't two things. "Record this deadline on both sides" is one concept that
 happens to require two writes. CQS is about not hiding side effects behind a
 *query*; this function is already a command, and it would just become an honest one.
 
-### The open question
+### Answered: the helper stays a pure output function
 
-**Should `sendSessionCookie` own the invariant, or stay a pure output function with
-the caller responsible for keeping the halves in step?** And relatedly — if it owns
-the invariant, does the deadline-vs-duration parameter question answer itself?
+The helper does not own the invariant. Mutating `session.expireAt` inside a function
+named `setCookie` / `sendSessionCookie` violates command-query separation — the name
+says what it does, and changing the session is not that. A `setCookieAndSession` name
+is a smell, not a fix. The caller keeps the halves in step; the helper just sends
+the header.
 
-The `clearCookie` calls belong in this discussion too. One passes no options, the
-other passes `{ httpOnly, sameSite }`. Both work today only because Express matches
-on name and path, and path defaults to `/` everywhere. Add `Secure` or a `path` to
-the setter and one of those clears stops matching — a cookie that survives logout,
-invisible from the UI, exactly like the `clearCookie(sessionId)` failure below.
-Whatever owns the cookie's attributes should own clearing it too.
+### Narrowed but not settled: duration or two instants?
+
+**Two-instants `(res, cookieValue, start, end)`** — tried and reverted. It's more
+explicit to the consumer (the caller already has both instants from the session
+object), but it introduced `Date.now()` called four times in login, violating the
+"one `now` per request" rule. The subtraction `end - start` still lives inside the
+helper, and the guard problem doesn't disappear — an unreasonably large *gap* between
+two instants is just as hard to validate as an unreasonably large duration; either
+way the ceiling is an arbitrary number.
+
+**Duration `(res, cookieValue, durationMs)`** — simpler (fewer params), and
+`res.cookie` itself takes a duration, so the API isn't unusual. The weakness is that
+nothing stops login from passing an uncapped constant like `SHORT_MAX_AGE` without
+the `Math.min` cap the middleware applies. But that's not the helper's job to fix —
+a guard clause catches the *wrong kind* of number (instant-as-duration), not the
+*wrong magnitude* of a correct kind.
+
+**Either way, both remaining items apply:**
+
+1. **Guard clause.** Throw if the computed duration exceeds a sane ceiling (e.g. one
+   day) or is non-positive. This turns the worst failure — an instant passed as a
+   duration producing a 56-year cookie — from silent to loud. The ceiling is
+   arbitrary, but the gap between any reasonable duration (~10s of thousands of ms)
+   and any timestamp (~1.7 trillion) is so wide that any plausible ceiling catches it.
+
+2. **One `now` at the top of login.** The middleware already captures `now` once.
+   Login currently calls `Date.now()` independently for `expireAt`, `absoluteExpireAt`,
+   and the cookie — up to four different instants for one moment. Capture one `now`
+   and derive everything from it.
+
+### `clearCookie` still belongs in this discussion
+
+One call passes no options, the other passes `{ httpOnly, sameSite }`. Both work
+today only because Express matches on name and path, and path defaults to `/`
+everywhere. Add `Secure` or a `path` to the setter and one of those clears stops
+matching — a cookie that survives logout, invisible from the UI, exactly like the
+`clearCookie(sessionId)` failure below. Whatever owns the cookie's attributes should
+own clearing it too.
 
 ## Failures
 
@@ -380,6 +405,20 @@ the condition tested is `Date.now() + flag`, which is always truthy — one bran
 dead. Silent again: sessions still expired, just always on the absolute deadline, so
 the idle timeout quietly stopped existing. Only visible by pinning the cookie by hand
 and timing the status codes.
+
+**`SESSION_MAP.keys().forEach(...)` in the sweep.** `.keys()` returns a MapIterator, a
+one-shot cursor with `.next()` — not an array — so it has no `.forEach`, and the call
+threw. Because it lived in a `setInterval` nothing caught it, and the throw killed the
+whole process ~15s after startup. Third sighting of "an uncaught throw in a timer takes
+the server down" (see `SESSION_MAP[key]` and `.close()`). Fix: `Array.from(...)` to
+materialise an array, or skip `.keys()` entirely — `Map` has its own `.forEach((value,
+key) => …)`. An iterator is a cursor, not a collection; array methods live on
+`Array.prototype`.
+
+**`res.status(204)` without a sender — again.** Second occurrence, this time in the
+logout idempotency path. Same bug as Exercise 3's `res.status(204)` that hung the
+request until timeout. `status()` sets, it doesn't send — `sendStatus(204)` or
+`.status(204).send()` is what actually transmits.
 
 ## Learnings
 
