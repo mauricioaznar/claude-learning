@@ -107,10 +107,23 @@ stays a pure output function — it doesn't own the session invariant.
 The point isn't SQL, it's that swapping the Map for a table barely changes the
 route code — `.get()` becomes a query and everything turns async.
 
-- [ ] `sessions` table: id, user_id, expires_at, absolute_expires_at
-- [ ] Store `expires_at` as BIGINT epoch ms (no timezone to get wrong)
-- [ ] Always use `?` placeholders, never string concatenation — SQL injection
-- [ ] Sessions now survive restarts, and cleanup is one DELETE query
+- [x] `sessions` table: id, user_id, expires_at, absolute_expires_at (schema.sql,
+      read and run on boot). Store `expires_at`/`absolute_expires_at` as BIGINT
+      epoch ms (no timezone to get wrong)
+- [x] `mysql2` promise pool in `db.js`; config via `--env-file`; `pool.end()` on
+      shutdown. Always `?` placeholders, array params — never concatenation
+- [ ] Substitute each `SESSION_MAP` call with DML: login `INSERT` (done), `auth`
+      (SELECT + slide UPDATE), logout `DELETE`, sweep `DELETE WHERE expire_at < ?`
+- [ ] Global error handler: everything here is 500, log server-side, generic body
+      (no `err.message` to the client) — every async query rejection forwards to it
+- [ ] Sessions now survive restarts (login → kill node → restart → same cookie
+      still 200 on a protected route)
+
+Deferred to the end of this exercise:
+- [ ] Reusable `cleanup()` shared by SIGTERM **and** SIGINT — Ctrl-C should drain
+      too. One function: `server.close`, `clearInterval`, `pool.end`
+- [ ] Move `USERS` into MySQL (final step). Makes `user_id` a real foreign key
+      instead of a logical int
 
 ### 7 — signed cookies ⬜
 The bridge to tokens. `cookie-parser` can attach a signature so the server detects
