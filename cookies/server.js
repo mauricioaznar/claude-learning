@@ -80,6 +80,14 @@ function clearCookie(res) {
   res.clearCookie(COOKIE_NAME, getCookiesOptions())
 }
 
+function errorMiddleware(err, req, res, next) {
+  if (err.status >= 500 && err.status < 600) {
+    res.status(500).send("Internal Server Error");
+  }
+
+  return res.status(err.status).send(err.message)
+
+}
 
 function auth (req, res, next) {
   const cookieValueUUID = req.cookies[COOKIE_NAME]
@@ -116,7 +124,7 @@ function auth (req, res, next) {
 // ---------------------------------------------------------------------------
 // EXERCISE 1 — log in and hand the browser a cookie
 // ---------------------------------------------------------------------------
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body ?? {};
   const user = findUser(username, password);
 
@@ -130,7 +138,11 @@ app.post("/api/login", (req, res) => {
   const slideExpireAt = now + SHORT_MAX_AGE
   const absoluteEnd= now  + ABSOLUTE_MAX_AGE
 
-  SESSION_MAP.set(userSessionId, { id: user.id, expireAt: slideExpireAt, absoluteExpireAt: absoluteEnd})
+
+  await pool.query(`
+    insert into sessions(uuid, expire_at, absolute_expire_at, user_id) values (?, ?, ?, ?)
+  `, [userSessionId, slideExpireAt, absoluteEnd, user.id])
+  // SESSION_MAP.set(userSessionId, { id: user.id, expireAt: slideExpireAt, absoluteExpireAt: absoluteEnd})
   setCookie(res, userSessionId, now, slideExpireAt)
   return res.json( "Login successfully" );
 });
@@ -175,6 +187,7 @@ app.get("/*splat", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
+app.use(errorMiddleware)
 
 let intervalRef = null
 const server = app.listen(PORT, async () => {
