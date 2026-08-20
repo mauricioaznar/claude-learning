@@ -1,11 +1,14 @@
 import path from "node:path";
+import { readFile } from "fs/promises";
 import express from "express";
 import * as crypto from "node:crypto";
 import cookieParser from "cookie-parser";
+import { pool } from "./db.js";
 
 const app = express();
 const PORT = 3000;
 const PUBLIC_DIR = path.join(import.meta.dirname, "public");
+const SQL_SCHEMA = path.join(import.meta.dirname, "schema.sql");
 
 const SHORT_MAX_AGE = 10 * 1000; // 10 seconds
 const ABSOLUTE_MAX_AGE = 20 * 1000// 20 seconds
@@ -174,8 +177,31 @@ app.get("/*splat", (req, res) => {
 
 
 let intervalRef = null
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`http://localhost:${PORT}`);
+
+
+
+  let schemaFile
+
+  try {
+    schemaFile = await readFile(SQL_SCHEMA, "utf8");
+  } catch (e) {
+    console.log('File couldnt be read')
+    process.exit(1)
+  }
+
+  if (!schemaFile) {
+    console.log('No schema file found')
+    process.exit(1)
+  }
+
+  try {
+     await pool.query(schemaFile)
+  } catch (e) {
+    console.log("problem connecting with mysql. DB init failed")
+    process.exit(1)
+  }
 
   intervalRef =setInterval(() => {
     const deletedKeys = []
@@ -193,8 +219,9 @@ const server = app.listen(PORT, () => {
   }, SWEEP_INTERVAL) // set timing on set interval into an amount not to small (too frequent) or to big (avoid saved stale sessions)// to avoid loading server.
 })
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   server.close(() => {
     clearInterval(intervalRef);
+    pool.end(); // release the pool's sockets so the event loop can drain
   });
 });
