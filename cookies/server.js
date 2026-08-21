@@ -89,29 +89,38 @@ function errorMiddleware(err, req, res, next) {
 
 }
 
-function auth (req, res, next) {
+async function auth (req, res, next) {
   const cookieValueUUID = req.cookies[COOKIE_NAME]
 
-  if (!cookieValueUUID || !SESSION_MAP.has(cookieValueUUID)) {
+  if (!cookieValueUUID) {
     return res.status(401).send("Unauthorized");
   }
 
-  const session = SESSION_MAP.get(cookieValueUUID)
+  const [rows] = await pool.query(`select * from sessions where uuid = ?`, [cookieValueUUID])
+  // !SESSION_MAP.has(cookieValueUUID)
+
+  if (rows.length === 0) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  const session = rows[0];
   const now = Date.now()
-  const userId = session.id;
+  const userId = session.user_id;
   const user = findUserById(userId);
 
-  if (!user || now > session.expireAt || now > session.absoluteExpireAt) {
-    SESSION_MAP.delete(cookieValueUUID)
+  if (!user || now > session.expire_at || now > session.absolute_expire_at) {
+    await pool.query(`delete from sessions where uuid = ?`, [cookieValueUUID])
+    // SESSION_MAP.delete(cookieValueUUID)
     clearCookie(res)
     return res.status(401).send("Unauthorized");
   }
 
 
 
-  const deadline = Math.min(SHORT_MAX_AGE + now, session.absoluteExpireAt);
+  const deadline = Math.min(SHORT_MAX_AGE + now, session.absolute_expire_at);
   setCookie(res, cookieValueUUID, now, deadline);
-  session.expireAt = deadline;
+  await pool.query(`update sessions set expire_at = ? where uuid = ?`, [deadline, cookieValueUUID])
+  // session.expireAt = deadline;
 
 
 
@@ -139,9 +148,7 @@ app.post("/api/login", async (req, res) => {
   const absoluteEnd= now  + ABSOLUTE_MAX_AGE
 
 
-  await pool.query(`
-    insert into sessions(uuid, expire_at, absolute_expire_at, user_id) values (?, ?, ?, ?)
-  `, [userSessionId, slideExpireAt, absoluteEnd, user.id])
+  await pool.query(`insert into sessions(uuid, expire_at, absolute_expire_at, user_id) values (?, ?, ?, ?)`, [userSessionId, slideExpireAt, absoluteEnd, user.id])
   // SESSION_MAP.set(userSessionId, { id: user.id, expireAt: slideExpireAt, absoluteExpireAt: absoluteEnd})
   setCookie(res, userSessionId, now, slideExpireAt)
   return res.json( "Login successfully" );
@@ -164,9 +171,9 @@ app.get("/api/secret", auth, (req, res) => {
 // ---------------------------------------------------------------------------
 // EXERCISE 3 — log out and make the cookie useless
 // ---------------------------------------------------------------------------
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", async (req, res) => {
 
-  const sessionId = req.cookies.session_id;
+  const sessionId = req.cookies[COOKIE_NAME];
 
   if (!sessionId) {
     // send status doesnt need to send a body back
@@ -176,7 +183,11 @@ app.post("/api/logout", (req, res) => {
   // http only removes document.cookie prevents theft
   // sameSite: "lax" only from same origin. other domains cannot send the cookie through, will get rejected. links are ok from other webiste to this domain localhost:3000, strict prevents those links from sending the cookie
   clearCookie(res)
-  SESSION_MAP.delete(sessionId)
+
+
+  // this query if safe to run becaue regardless if it exists the query wont fail
+  await pool.query(`delete from sessions where uuid = ?`, [sessionId])
+  // SESSION_MAP.delete(sessionId)
 
   return res.sendStatus(204);
 });
@@ -216,19 +227,24 @@ const server = app.listen(PORT, async () => {
     process.exit(1)
   }
 
-  intervalRef =setInterval(() => {
-    const deletedKeys = []
-    Array.from(SESSION_MAP.keys()).forEach(key => {
-      const session = SESSION_MAP.get(key)
-      // expires at reflects the true expiration date so no need to include the absolute here since there is a ceiling
-      if (Date.now() > session.expireAt) {
-        deletedKeys.push(key)
-      }
-    })
-
-    deletedKeys.forEach(key => {
-      SESSION_MAP.delete(key)
-    })
+  intervalRef =setInterval(async () => {
+    try {
+      await pool.query(`delete from sessions where expire_at <= ?`, [Date.now()])
+    } catch (e) {
+      console.log('interval get sessions query failed')
+    }
+    // const deletedKeys = []
+    // Array.from(SESSION_MAP.keys()).forEach(key => {
+    //   const session = SESSION_MAP.get(key)
+    //   // expires at reflects the true expiration date so no need to include the absolute here since there is a ceiling
+    //   if (Date.now() > session.expireAt) {
+    //     deletedKeys.push(key)
+    //   }
+    // })
+    //
+    // deletedKeys.forEach(key => {
+    //   SESSION_MAP.delete(key)
+    // })
   }, SWEEP_INTERVAL) // set timing on set interval into an amount not to small (too frequent) or to big (avoid saved stale sessions)// to avoid loading server.
 })
 
@@ -238,3 +254,10 @@ process.on("SIGTERM", async () => {
     pool.end(); // release the pool's sockets so the event loop can drain
   });
 });
+
+process.on("SIGINT", (err) => {
+  server.close(() => {
+    clearInterval(intervalRef);
+    pool.end(); // release the pool's sockets so the event loop can drain
+  });
+})
