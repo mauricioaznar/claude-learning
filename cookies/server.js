@@ -81,8 +81,9 @@ function clearCookie(res) {
 }
 
 function errorMiddleware(err, req, res, next) {
-  if (err.status >= 500 && err.status < 600) {
-    res.status(500).send("Internal Server Error");
+  err.status = err.status || 500
+  if (err.status === 500) {
+    return res.status(500).send("Internal Server Error");
   }
 
   return res.status(err.status).send(err.message)

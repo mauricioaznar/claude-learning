@@ -112,10 +112,16 @@ route code — `.get()` becomes a query and everything turns async.
       epoch ms (no timezone to get wrong)
 - [x] `mysql2` promise pool in `db.js`; config via `--env-file`; `pool.end()` on
       shutdown. Always `?` placeholders, array params — never concatenation
-- [ ] Substitute each `SESSION_MAP` call with DML: login `INSERT` (done), `auth`
-      (SELECT + slide UPDATE), logout `DELETE`, sweep `DELETE WHERE expire_at < ?`
-- [ ] Global error handler: everything here is 500, log server-side, generic body
-      (no `err.message` to the client) — every async query rejection forwards to it
+- [x] Substitute each `SESSION_MAP` call with DML: login `INSERT`, `auth`
+      (SELECT + slide UPDATE; DELETE + 401 on expiry), logout `DELETE`
+      (idempotent), sweep `DELETE WHERE expire_at <= ?` inside a try/catch so a
+      rejection in the timer can't kill the process
+- [~] Global error handler: everything here is 500, log server-side, generic body
+      (no `err.message` to the client) — every async query rejection forwards to it.
+      `err.status || 500` default landed. STILL OPEN: line 86 sends without a
+      `return`, so the 500 path double-sends and falls through to line 89, which
+      also leaks `err.message`; and there's no `console.error` yet. Fix is the
+      `return` plus the log.
 - [ ] Sessions now survive restarts (login → kill node → restart → same cookie
       still 200 on a protected route)
 
@@ -145,6 +151,21 @@ fork: a session ID is a coat-check ticket, a JWT is a signed passport.
 For a browser SPA like this one, cookie sessions are usually the better choice.
 Tokens matter for mobile apps, third-party API access, and services that can't
 share a session store.
+
+### Finally — 404 handler + request id ⬜
+Deliberately deferred to the very end (after tokens), because it only pays off once
+the error handler funnel is solid.
+- [ ] A 404 isn't a thrown error — Express just runs out of handlers. Catch it with
+      a terminal path-less middleware placed **after** all routes and **before** the
+      4-arg error handler. Either respond 404 directly, or `next(err)` with
+      `err.status = 404` to funnel it through the same handler.
+- [ ] Ordering gotcha: `/*splat` already matches every GET (serves index.html), so a
+      404 catcher after it only fires for non-GET methods. To 404 unknown `/api/*` as
+      JSON, scope the catcher to `/api` and put it **before** the SPA fallback.
+- [ ] Request id: assign `req.id = req.get("X-Request-Id") ?? crypto.randomUUID()`
+      early, echo it in a response header, log it with `console.error(req.id, err)`,
+      and return it in the 500 body — it's the safe bridge between the generic client
+      message and the detailed server log.
 
 ## Failures
 
@@ -396,6 +417,24 @@ Orchestrators send SIGTERM, wait ~30s, then SIGKILL — so anything keeping the 
 loop alive, like a pending `setInterval`, is what stops you exiting in that window.
 `clearInterval` on shutdown is explicit; `timer.unref()` is the blunt version that
 just stops the timer counting as a reason to stay running.
+
+**The error handler is a funnel, and status lives at the throw site.** A handler
+can't infer a status from a bare `Error` — a dropped DB connection and a bad
+request body are both just `Error`. So the code that *knows* attaches
+`err.status` (400/404/409) when it throws; the handler reads `err.status ?? 500`.
+Two families: **unexpected** failures (query rejection, bug) have no status, are
+all 500, get logged server-side and a **generic** body — never `err.message`
+(that's SQL, stacks, connection strings). **Deliberate** errors carry a status
+and *may* expose `err.message`, because you wrote it for the client. Express 5
+auto-forwards rejected async routes/middleware to the handler, which is why the
+routes here need no `try/catch`. The handler's value even when it "just defaults
+to 500": one place owns logging + response shape (DRY), and it's a safety net for
+routes not written yet — they can't crash the process or leak internals.
+
+**A request id bridges the generic message and the detailed log.** The client
+gets "Internal Server Error" + an id; you grep the id in the log. Honor an
+incoming `X-Request-Id` (a proxy sets it so one request traces across services),
+generate one otherwise. The id is safe in the 500 body; `err.message` is not.
 
 ## Things that keep biting
 
