@@ -116,14 +116,15 @@ route code — `.get()` becomes a query and everything turns async.
       (SELECT + slide UPDATE; DELETE + 401 on expiry), logout `DELETE`
       (idempotent), sweep `DELETE WHERE expire_at <= ?` inside a try/catch so a
       rejection in the timer can't kill the process
-- [~] Global error handler: everything here is 500, log server-side, generic body
+- [x] Global error handler: everything here is 500, log server-side, generic body
       (no `err.message` to the client) — every async query rejection forwards to it.
-      `err.status || 500` default landed. STILL OPEN: line 86 sends without a
-      `return`, so the 500 path double-sends and falls through to line 89, which
-      also leaks `err.message`; and there's no `console.error` yet. Fix is the
-      `return` plus the log.
-- [ ] Sessions now survive restarts (login → kill node → restart → same cookie
-      still 200 on a protected route)
+      `err.status || 500` default, `console.error(err)`, `return` on the 500 branch
+      (generic body), `err.message` only for 4xx. Note for later: it logs every
+      error, but only 500s reach it today (expected cases are handled inline). Once
+      4xx get thrown in, move the log inside the `>= 500` branch so routine client
+      mistakes don't spam the error log.
+- [x] Sessions now survive restarts (login → kill node → restart → same cookie
+      still 200 on a protected route) — confirmed
 
 Deferred to the end of this exercise:
 - [ ] Reusable `cleanup()` shared by SIGTERM **and** SIGINT — Ctrl-C should drain
