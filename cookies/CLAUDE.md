@@ -103,7 +103,7 @@ clause that throws on non-positive or absurdly large durations. Cookie options
 shared via `getCookiesOptions()` so set and clear can't drift apart. The helper
 stays a pure output function — it doesn't own the session invariant.
 
-### 6 — persist sessions in MySQL ⬜
+### 6 — persist sessions in MySQL ✅
 The point isn't SQL, it's that swapping the Map for a table barely changes the
 route code — `.get()` becomes a query and everything turns async.
 
@@ -127,10 +127,14 @@ route code — `.get()` becomes a query and everything turns async.
       still 200 on a protected route) — confirmed
 
 Deferred to the end of this exercise:
-- [ ] Reusable `cleanup()` shared by SIGTERM **and** SIGINT — Ctrl-C should drain
-      too. One function: `server.close`, `clearInterval`, `pool.end`
-- [ ] Move `USERS` into MySQL (final step). Makes `user_id` a real foreign key
-      instead of a logical int
+- [x] Reusable `cleanUp()` shared by SIGTERM **and** SIGINT — Ctrl-C drains too.
+      One function: `server.close` → `clearInterval` → `pool.end`; both signals
+      pass it directly (no wrapper, no bogus `err` param)
+- [x] Move `USERS` into MySQL. `users` table (username UNIQUE, displayName,
+      password), seeded idempotently with `INSERT IGNORE`, `sessions.user_id` now a
+      real FK with `ON DELETE CASCADE`. `findUser`/`findUserById` are SELECTs
+      returning `rows[0] ?? null`; every caller awaits. Verified end-to-end (login
+      → `/api/me` → restart) — all green.
 
 ### 7 — signed cookies ⬜
 The bridge to tokens. `cookie-parser` can attach a signature so the server detects
@@ -313,6 +317,31 @@ logout idempotency path. Same bug as Exercise 3's `res.status(204)` that hung th
 request until timeout. `status()` sets, it doesn't send — `sendStatus(204)` or
 `.status(204).send()` is what actually transmits.
 
+**`findUser` selected `username, displayName` but not `id`, and login inserts
+`user.id` into `sessions.user_id`.** So the bind param was `undefined`. mysql2
+rejects `undefined` outright (`Bind parameters must not contain undefined`), so
+login threw → the error handler turned it into a 500. A SELECT's column list is a
+contract with everything downstream that reads the row; login needed `id` and the
+query silently didn't provide it. Not a null in the DB — a crash before the query
+ran.
+
+**`delete * from sessions`.** Copied the `SELECT *` shape into a DELETE, which has
+no column list — invalid SQL. It sat inside the sweep's `try/catch`, so it threw
+every 15s and only logged; the sweep silently reclaimed nothing. Caught by reading
+it next to the valid `DELETE` in logout. The try/catch that (correctly) keeps a
+timer rejection from killing the process also hides a permanently broken query —
+a swallowed error is invisible until you check the logs.
+
+**Sweep comparison inverted: `expire_at >= now`.** Selected the sessions still in
+the *future* (valid) and spared the expired ones — it would have reaped exactly
+what it should keep. `<= now` is "already past its deadline." Same class as the
+Exercise 4 duration/instant mixups: an operator pointed the wrong way against a
+timestamp, silently doing the opposite of the intent.
+
+**`autoincrement` in the schema.** SQLite's spelling; MySQL is `AUTO_INCREMENT`.
+Syntax error on the first statement, and since `schema.sql` runs top-to-bottom on
+boot, nothing after it ran either — one wrong keyword took out the whole file.
+
 ## Learnings
 
 **HTTP is stateless.** Every request arrives with no memory of the last one. A
@@ -437,10 +466,35 @@ gets "Internal Server Error" + an id; you grep the id in the log. Honor an
 incoming `X-Request-Id` (a proxy sets it so one request traces across services),
 generate one otherwise. The id is safe in the 500 body; `err.message` is not.
 
+**A foreign key encodes a policy, not just a shape.** `ON DELETE CASCADE` on
+`sessions.user_id` *is* "deleting a user revokes all their sessions" — the DB
+enforces it so no application code has to remember to. The constraint lives on the
+child (the table holding the reference), needs matching types and an InnoDB engine,
+and the parent must be created first. Latent until something actually deletes a
+user, but correct the moment that path appears.
+
+**A boot-run schema needs idempotent seeds.** `CREATE TABLE IF NOT EXISTS` is
+idempotent; a bare `INSERT` is not, so re-running `schema.sql` every boot (every
+save under `--watch`) piles up duplicate rows. `INSERT IGNORE` fixes it *only* when
+there's a `UNIQUE`/PK for the row to collide on — without one, each insert gets a
+fresh auto-id and no conflict, so nothing is skipped. The unique key on the natural
+handle (`username`) is what makes the seed safe *and* is correct on its own.
+
+**mysql2 rejects `undefined` bind params.** A `?` bound to `undefined` throws
+before the query runs — which is why a missing SELECT column surfaces as a loud
+crash at the *next* insert, not a silent `NULL` in the row. Useful: the failure
+points at the reader (the INSERT), not the writer (the SELECT that forgot a column).
+
+**Sanitize at the query boundary.** Not `SELECT`-ing `password` is a cleaner way to
+keep it off `req.user` than fetching it and scrubbing with `{...user, password:
+undefined}`. Once the column never enters the row, the scrub is dead code and no
+route can leak what was never loaded.
+
 ## Things that keep biting
 
 - Needs Node **20.11+** (`import.meta.dirname`). On Node 16 the server dies at
   startup on `path.join(undefined)` before printing anything — `nvm use 20.19.3`
-- Saving a file restarts `node --watch`, which wipes the Map — you get logged out
+- Sessions now live in MySQL, so a `node --watch` restart no longer logs you out
+  (that was the in-memory Map). The DB must be up, though — see `--env-file=.env`
 - `express.json()` only parses when the request has `Content-Type: application/json`
 - Verify with `curl -i`, not the browser. Several bugs above looked fine in the UI.

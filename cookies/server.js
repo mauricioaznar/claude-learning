@@ -23,19 +23,15 @@ app.use(cookieParser())
 
 // Lab shortcut: passwords are plaintext so the focus stays on cookies.
 // Real systems must store a slow hash (bcrypt/argon2), never the password.
-const USERS = [
-  { id: 1, username: "mau", password: "hunter2", displayName: "Mxau" },
-  { id: 2, username: "ada", password: "lovelace", displayName: "Ada" },
-];
 
-const SESSION_MAP = new Map()
-
-function findUser(username, password) {
-  return USERS.find((u) => u.username === username && u.password === password);
+async function findUser(username, password) {
+  const [rows] = await pool.query(`SELECT username, displayName, id FROM users WHERE username = ? and password = ?`, [username, password]);
+  return rows.length > 0 ? rows[0] : null;
 }
 
-function findUserById(id) {
-  return USERS.find((u) => u.id === id);
+async function findUserById(id) {
+  const [rows] = await pool.query(`SELECT username, displayName FROM users WHERE id = ?`, [id]);
+  return rows.length > 0 ? rows[0] : null;
 }
 
 
@@ -82,6 +78,7 @@ function clearCookie(res) {
 
 function errorMiddleware(err, req, res, next) {
   err.status = err.status || 500
+  console.error(err)
   if (err.status === 500) {
     return res.status(500).send("Internal Server Error");
   }
@@ -98,7 +95,6 @@ async function auth (req, res, next) {
   }
 
   const [rows] = await pool.query(`select * from sessions where uuid = ?`, [cookieValueUUID])
-  // !SESSION_MAP.has(cookieValueUUID)
 
   if (rows.length === 0) {
     return res.status(401).send("Unauthorized");
@@ -107,11 +103,10 @@ async function auth (req, res, next) {
   const session = rows[0];
   const now = Date.now()
   const userId = session.user_id;
-  const user = findUserById(userId);
+  const user = await findUserById(userId);
 
   if (!user || now > session.expire_at || now > session.absolute_expire_at) {
     await pool.query(`delete from sessions where uuid = ?`, [cookieValueUUID])
-    // SESSION_MAP.delete(cookieValueUUID)
     clearCookie(res)
     return res.status(401).send("Unauthorized");
   }
@@ -136,7 +131,7 @@ async function auth (req, res, next) {
 // ---------------------------------------------------------------------------
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body ?? {};
-  const user = findUser(username, password);
+  const user = await findUser(username, password);
 
   if (!user) {
     return res.status(401).json({ error: "Invalid username or password" });
@@ -150,7 +145,6 @@ app.post("/api/login", async (req, res) => {
 
 
   await pool.query(`insert into sessions(uuid, expire_at, absolute_expire_at, user_id) values (?, ?, ?, ?)`, [userSessionId, slideExpireAt, absoluteEnd, user.id])
-  // SESSION_MAP.set(userSessionId, { id: user.id, expireAt: slideExpireAt, absoluteExpireAt: absoluteEnd})
   setCookie(res, userSessionId, now, slideExpireAt)
   return res.json( "Login successfully" );
 });
@@ -188,7 +182,6 @@ app.post("/api/logout", async (req, res) => {
 
   // this query if safe to run becaue regardless if it exists the query wont fail
   await pool.query(`delete from sessions where uuid = ?`, [sessionId])
-  // SESSION_MAP.delete(sessionId)
 
   return res.sendStatus(204);
 });
@@ -234,31 +227,15 @@ const server = app.listen(PORT, async () => {
     } catch (e) {
       console.log('interval get sessions query failed')
     }
-    // const deletedKeys = []
-    // Array.from(SESSION_MAP.keys()).forEach(key => {
-    //   const session = SESSION_MAP.get(key)
-    //   // expires at reflects the true expiration date so no need to include the absolute here since there is a ceiling
-    //   if (Date.now() > session.expireAt) {
-    //     deletedKeys.push(key)
-    //   }
-    // })
-    //
-    // deletedKeys.forEach(key => {
-    //   SESSION_MAP.delete(key)
-    // })
-  }, SWEEP_INTERVAL) // set timing on set interval into an amount not to small (too frequent) or to big (avoid saved stale sessions)// to avoid loading server.
+  }, SWEEP_INTERVAL) // interval is a performance knob: too frequent loads the DB, too rare leaves stale rows. Enforcement is lazy expiry in auth, not this sweep.
 })
 
-process.on("SIGTERM", async () => {
+function cleanUp() {
   server.close(() => {
     clearInterval(intervalRef);
     pool.end(); // release the pool's sockets so the event loop can drain
   });
-});
+}
 
-process.on("SIGINT", (err) => {
-  server.close(() => {
-    clearInterval(intervalRef);
-    pool.end(); // release the pool's sockets so the event loop can drain
-  });
-})
+process.on("SIGTERM", cleanUp);
+process.on("SIGINT", cleanUp);
