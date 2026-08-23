@@ -11,7 +11,7 @@ const PUBLIC_DIR = path.join(import.meta.dirname, "public");
 const SQL_SCHEMA = path.join(import.meta.dirname, "schema.sql");
 
 const SHORT_MAX_AGE = 10 * 1000; // 10 seconds
-const ABSOLUTE_MAX_AGE = 20 * 1000// 20 seconds
+const ABSOLUTE_MAX_AGE = 20 * 1000;// 20 seconds
 const SWEEP_INTERVAL = 15 * 1000 // 15 seconds
 
 
@@ -19,7 +19,7 @@ const COOKIE_NAME = "session_id"
 
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
-app.use(cookieParser(process.env.COOKIE_SECRET));
+app.use(cookieParser(process.env.REFRESH_TOKEN_SECRET));
 
 // Lab shortcut: passwords are plaintext so the focus stays on cookies.
 // Real systems must store a slow hash (bcrypt/argon2), never the password.
@@ -76,6 +76,17 @@ function getCookie(req) {
 
 function clearCookie(res) {
   res.clearCookie(COOKIE_NAME, getCookiesOptions())
+}
+
+function signToken(userId, expireAt) {
+  const header = Buffer.from(JSON.stringify({ alg:"HS256", typ: "JWT"})).toString("base64url");
+  const payload =Buffer.from(JSON.stringify( {
+    user_id: userId,
+    expire_at: expireAt,
+  })).toString("base64url");
+  const hmacEncodedArg = [header, payload].join('.')
+  const signature = crypto.createHmac("sha256", process.env.ACCESS_TOKEN_SECRET).update(hmacEncodedArg).digest("base64url")
+  return [header,payload,signature].join(".")
 }
 
 function errorMiddleware(err, req, res, next) {

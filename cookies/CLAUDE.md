@@ -160,7 +160,7 @@ structure yourself; passing the secret to `cookieParser()` makes it verify-then-
 unwrap for you, returning the raw value, or `false` on a bad signature (falsy, so
 the existing `if (!value)` 401s a forgery for free).
 
-### Then — access tokens + refresh tokens
+### 8 — access + refresh tokens ⬜
 A **refresh token** is basically the session already built here: long-lived, stored
 server-side, revocable by deleting it. An **access token** is the new idea:
 short-lived and self-contained, checked by signature instead of a lookup.
@@ -171,7 +171,41 @@ fork: a session ID is a coat-check ticket, a JWT is a signed passport.
 
 For a browser SPA like this one, cookie sessions are usually the better choice.
 Tokens matter for mobile apps, third-party API access, and services that can't
-share a session store.
+share a session store. We build it here to *understand* it, not because this app
+needs it.
+
+The reframe that drives the whole exercise: **the `sessions` table already IS the
+refresh token** — long-lived, server-side, revocable by `DELETE`. So this exercise
+adds a short-lived self-contained access-token layer *on top of* it and demotes the
+session to backing that layer.
+
+Decisions (agreed before coding):
+- **Hand-roll the JWT with `node:crypto`** — no `jsonwebtoken`. The point is to see
+  that a JWT is just `base64url(header).base64url(payload).base64url(HMAC)`.
+- **Access token in browser memory, sent as `Authorization: Bearer`**; refresh token
+  stays in the httpOnly signed cookie, scoped to `/api/refresh`. Access never
+  persists (survives no reload — that's the point; you re-mint from the refresh).
+- **Separate `TOKEN_SECRET`** in `.env`, distinct from `COOKIE_SECRET` — signing
+  tokens and signing cookies are different jobs with different blast radii.
+- **Keep TTLs tiny** so expiry stays observable, same as the session clocks: access
+  ~10s, refresh reuses the existing 20s absolute session.
+
+- [ ] **Step 1 — `signToken(payload)`**: JSON header `{alg:"HS256",typ:"JWT"}`,
+      base64url each of header+payload, HMAC-SHA256 the `header.payload` string with
+      `TOKEN_SECRET`, base64url the digest, join with dots. Add `exp` (epoch ms) to
+      the payload.
+- [ ] **Step 2 — `verifyToken(token)`**: split on `.`, recompute the HMAC over the
+      first two segments, **constant-time** compare (`crypto.timingSafeEqual`),
+      reject on mismatch or `exp` past. Return the decoded payload or `null`. `auth`
+      stops doing a `sessions` SELECT and calls this.
+- [ ] **Step 3 — `POST /api/refresh`**: read the refresh cookie, do the DB lookup +
+      expiry checks `auth` used to own, mint a fresh access token, return it in the
+      JSON body. The revocable reference token backs the fast self-contained one.
+- [ ] **Step 4 — transport**: login/refresh return the access token in the body; SPA
+      holds it in a variable, sends `Authorization: Bearer`, and on a 401 calls
+      `/api/refresh` once then retries the original request.
+- [ ] **Step 5 (optional) — rotation + reuse detection**: each refresh issues a new
+      refresh token and deletes the old; a replayed old token means theft → revoke.
 
 ### Finally — 404 handler + request id ⬜
 Deliberately deferred to the very end (after tokens), because it only pays off once
