@@ -19,7 +19,7 @@ const COOKIE_NAME = "session_id"
 
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
-app.use(cookieParser())
+app.use(cookieParser(process.env.COOKIE_SECRET));
 
 // Lab shortcut: passwords are plaintext so the focus stays on cookies.
 // Real systems must store a slow hash (bcrypt/argon2), never the password.
@@ -53,15 +53,13 @@ const durationGuard = function (duration) {
 }
 
 const getCookiesOptions = function (duration = undefined){
-  const options = { httpOnly: true, sameSite: 'lax' }
+  const options = { httpOnly: true, sameSite: 'lax', signed: true }
 
   if (duration !== undefined) {
     options.maxAge= duration
   }
   return  options
 }
-
-
 
 function setCookie(res, cookieValue, start, end) {
 
@@ -70,6 +68,10 @@ function setCookie(res, cookieValue, start, end) {
   durationGuard(duration)
 
   res.cookie(COOKIE_NAME, cookieValue, getCookiesOptions(duration));
+}
+
+function getCookie(req) {
+  return req.signedCookies[COOKIE_NAME]
 }
 
 function clearCookie(res) {
@@ -88,7 +90,7 @@ function errorMiddleware(err, req, res, next) {
 }
 
 async function auth (req, res, next) {
-  const cookieValueUUID = req.cookies[COOKIE_NAME]
+  const cookieValueUUID = getCookie(req)
 
   if (!cookieValueUUID) {
     return res.status(401).send("Unauthorized");
@@ -168,7 +170,7 @@ app.get("/api/secret", auth, (req, res) => {
 // ---------------------------------------------------------------------------
 app.post("/api/logout", async (req, res) => {
 
-  const sessionId = req.cookies[COOKIE_NAME];
+  const sessionId = getCookie(req);
 
   if (!sessionId) {
     // send status doesnt need to send a body back

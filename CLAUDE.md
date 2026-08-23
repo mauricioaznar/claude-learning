@@ -8,7 +8,7 @@ that Mau can rebuild each feature unaided later.
 
 | Project | Topic | Status |
 | --- | --- | --- |
-| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–6 done, on 7 — signed cookies |
+| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–7 done, next — access + refresh tokens |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so

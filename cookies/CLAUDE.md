@@ -136,13 +136,29 @@ Deferred to the end of this exercise:
       returning `rows[0] ?? null`; every caller awaits. Verified end-to-end (login
       → `/api/me` → restart) — all green.
 
-### 7 — signed cookies ⬜
+### 7 — signed cookies ✅
 The bridge to tokens. `cookie-parser` can attach a signature so the server detects
 tampering. Sit with what that implies: if the server can verify a value it never
 stored, it doesn't need to look anything up. That is JWT in miniature.
 
-- [ ] Sign the session cookie and try editing it in DevTools
-- [ ] Watch the signature check reject the modified value
+- [x] Sign the session cookie and try editing it in DevTools
+- [x] Watch the signature check reject the modified value — edit one char, `/api/me`
+      returns 401
+
+Signing and statelessness are **orthogonal**. Signing (HMAC) answers *did the
+server issue this exact value, unmodified?* — it says nothing about what the value
+carries. This exercise did only the signing move, on the value we already had (the
+session UUID); the table stayed. Putting the payload *into* the cookie and dropping
+the lookup is the separate next move — safe only *because* signing exists.
+
+Three touch points, and the trap is the count: **one write, two reads.** The write
+(`getCookiesOptions` → `signed: true`) is shared, so one change covered it. But the
+reads had to move buckets: a verified signed cookie no longer lands in `req.cookies`
+— it lands in `req.signedCookies`, already stripped of `s:` and verified. Missing
+the second read (logout) is how this bites. You never parse the `s:uuid.sig`
+structure yourself; passing the secret to `cookieParser()` makes it verify-then-
+unwrap for you, returning the raw value, or `false` on a bad signature (falsy, so
+the existing `if (!value)` 401s a forgery for free).
 
 ### Then — access tokens + refresh tokens
 A **refresh token** is basically the session already built here: long-lived, stored
@@ -341,6 +357,14 @@ timestamp, silently doing the opposite of the intent.
 **`autoincrement` in the schema.** SQLite's spelling; MySQL is `AUTO_INCREMENT`.
 Syntax error on the first statement, and since `schema.sql` runs top-to-bottom on
 boot, nothing after it ran either — one wrong keyword took out the whole file.
+
+**`getCookie()` read `req` with no `req` in scope.** Extracted the signed-cookie
+read into a helper but wrote it as `function getCookie() { return
+req.signedCookies[...] }` — `req` isn't a parameter and isn't module-scoped, so it
+threw `ReferenceError` → 500 on every call site. Fourth sighting of the same family
+(`newSessionId`, `userSessionId` ×2): referencing a name that isn't in scope. A
+plain helper sees nothing of the request unless you hand it in — `setCookie`/
+`clearCookie` take `res` for exactly this reason. Fix: `getCookie(req)`.
 
 ## Learnings
 
