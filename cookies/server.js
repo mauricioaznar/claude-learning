@@ -78,11 +78,13 @@ function clearCookie(res) {
   res.clearCookie(COOKIE_NAME, getCookiesOptions())
 }
 
-function signToken(userId, expireAt) {
+function signToken(userId, displayName, username, expireAt) {
   const header = Buffer.from(JSON.stringify({ alg:"HS256", typ: "JWT"})).toString("base64url");
   const payload =Buffer.from(JSON.stringify( {
-    user_id: userId,
-    expire_at: expireAt,
+    userId: userId,
+    username: username,
+    displayName: displayName,
+    expireAt: expireAt,
   })).toString("base64url");
   const hmacEncodedArg = [header, payload].join('.')
   const signature = crypto.createHmac("sha256", process.env.ACCESS_TOKEN_SECRET).update(hmacEncodedArg).digest("base64url")
@@ -91,15 +93,15 @@ function signToken(userId, expireAt) {
 
 
 // the token comes from the header Authorization, this build the access token. the refresh token gets handled in a different place. after the access token was verified, so the parameter value will always come from res.signedCookies[COOKIEs_NAME]
-// reusing the same function to return the payload, if the verified token is not valid, I'll return false, or throw an error (for the moment im returing false), since that can give me an unambigous answer as that the verification failed.
+// reusing the same function to return the payload, if the verified token is not valid, I'll return false. Other expected failures will also return false (invalid token structure, mismatching signature). This will simplify the usage of this function to the caller. either is false or returns the payload, no need to handle errors
 function verifyToken(token) {
   const splitToken = token.split('.')
   if (splitToken.length !== 3) {
-    throw new Error("Invalid token") // the split must be a 3 part string
+    return false;// the split must be a 3 part string
   }
   const [header, payload, oldSignature] = splitToken
 
-  // the are already base64url and the signtoken builds the signature from the base64url format
+  // they are already base64url and the signtoken builds the signature from the base64url format
   const hmacEncodedArg = [header, payload].join('.') // i may need to substritute this vairable to header, and payload
   const newSignature = crypto.createHmac("sha256", process.env.ACCESS_TOKEN_SECRET).update(hmacEncodedArg).digest('base64url')
 
@@ -107,7 +109,7 @@ function verifyToken(token) {
   const b = Buffer.from(newSignature)
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     console.log('equal time legnth comparison without avoids attacker working out which character makes it fail and discovering the correct token shape but substituing the mismatching character ')
-    throw new Error('Invalid token')
+    return false;
   }
 
 
@@ -115,12 +117,12 @@ function verifyToken(token) {
   // lets do the expireAt check
   const payloadDecoded = Buffer.from(payload, 'base64url').toString('utf8') // this functions are not correct but Im 100% sure you will suggest me into the right functions. Im trying to rever thte url64url into the original string
   const payloadObject = JSON.parse(payloadDecoded)
-  const expiresAt = payloadObject.expire_at
-  const userId = payloadObject.user_id
+  const expiresAt = payloadObject.expireAt
+  const userId = payloadObject.userId
 
   if(Date.now() > expiresAt) {
     console.log(`user id '${userId}' token expired`) // ideally we would have the
-    return null;
+    return false;
   }
 
   return payloadObject
@@ -138,39 +140,22 @@ function errorMiddleware(err, req, res, next) {
 }
 
 async function auth (req, res, next) {
-  const cookieValueUUID = getCookie(req)
+  const accessToken = req.headers.authorization ? req.headers.authorization.replace('Bearer ', "") : null;
 
-  if (!cookieValueUUID) {
+  if (!accessToken) {
     return res.status(401).send("Unauthorized");
   }
 
-  const [rows] = await pool.query(`select * from sessions where uuid = ?`, [cookieValueUUID])
 
-  if (rows.length === 0) {
-    return res.status(401).send("Unauthorized");
-  }
+  const payload = verifyToken(accessToken)
 
-  const session = rows[0];
-  const now = Date.now()
-  const userId = session.user_id;
-  const user = await findUserById(userId);
-
-  if (!user || now > session.expire_at || now > session.absolute_expire_at) {
-    await pool.query(`delete from sessions where uuid = ?`, [cookieValueUUID])
-    clearCookie(res)
+  if (!payload) {
     return res.status(401).send("Unauthorized");
   }
 
 
 
-  const deadline = Math.min(SHORT_MAX_AGE + now, session.absolute_expire_at);
-  setCookie(res, cookieValueUUID, now, deadline);
-  await pool.query(`update sessions set expire_at = ? where uuid = ?`, [deadline, cookieValueUUID])
-  // session.expireAt = deadline;
-
-
-
-  req.user = {...user, password: undefined}
+  req.user = { username: payload.username, displayName: payload.displayName}
 
   next()
 }
@@ -187,16 +172,19 @@ app.post("/api/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid username or password" });
   }
 
-  const userSessionId = crypto.randomUUID()
+  const uuid = crypto.randomUUID()
 
   const now = Date.now()
-  const slideExpireAt = now + SHORT_MAX_AGE
+  const expireAt = now + SHORT_MAX_AGE
   const absoluteEnd= now  + ABSOLUTE_MAX_AGE
 
 
-  await pool.query(`insert into sessions(uuid, expire_at, absolute_expire_at, user_id) values (?, ?, ?, ?)`, [userSessionId, slideExpireAt, absoluteEnd, user.id])
-  setCookie(res, userSessionId, now, slideExpireAt)
-  return res.json( "Login successfully" );
+  await pool.query(`insert into sessions(uuid, absoluteExpireAt, userId) values (?, ?, ?)`, [uuid, absoluteEnd, user.id])
+  setCookie(res, uuid, now, absoluteEnd)
+  const accessToken = signToken(user.id, user.displayName, user.username, expireAt)
+  return res.status(200).send({
+    accessToken: accessToken
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -228,13 +216,48 @@ app.post("/api/logout", async (req, res) => {
   // http only removes document.cookie prevents theft
   // sameSite: "lax" only from same origin. other domains cannot send the cookie through, will get rejected. links are ok from other webiste to this domain localhost:3000, strict prevents those links from sending the cookie
   clearCookie(res)
-
-
+  
   // this query if safe to run becaue regardless if it exists the query wont fail
   await pool.query(`delete from sessions where uuid = ?`, [sessionId])
 
   return res.sendStatus(204);
 });
+
+app.post("/api/refresh", async (req, res) => {
+  const uuid = getCookie(req)
+  if (!uuid) {
+    return res.status(401).send("Unauthorized");
+  }
+  
+  const [sessionRows] = await pool.query('SELECT * FROM sessions where uuid = ?', [uuid])
+  if (sessionRows.length === 0) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  const session = sessionRows[0]
+  
+  const now = Date.now()
+  if (now > session.absoluteExpireAt) {
+    clearCookie(res)
+    await pool.query("delete from sessions where uuid = ?", [uuid])
+    return res.status(401).send("Unauthorized");
+  }
+
+  const user = await findUserById(session.userId)
+
+  if (!user) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  const deadline = Math.min(now + SHORT_MAX_AGE, session.absoluteExpireAt)
+  const accessToken = signToken(session.userId, user.displayName, user.username, deadline)
+  setCookie(res, uuid, now, session.absoluteExpireAt);
+  
+  
+  return res.status(200).send({
+    accessToken: accessToken
+  })
+})
 
 // SPA fallback: any non-API path returns index.html so the client router can
 // take over on a hard refresh or a pasted deep link.
@@ -273,7 +296,7 @@ const server = app.listen(PORT, async () => {
 
   intervalRef =setInterval(async () => {
     try {
-      await pool.query(`delete from sessions where expire_at <= ?`, [Date.now()])
+      await pool.query(`delete from sessions where absoluteExpireAt <= ?`, [Date.now()])
     } catch (e) {
       console.log('interval get sessions query failed')
     }

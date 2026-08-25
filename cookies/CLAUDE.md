@@ -107,14 +107,14 @@ stays a pure output function — it doesn't own the session invariant.
 The point isn't SQL, it's that swapping the Map for a table barely changes the
 route code — `.get()` becomes a query and everything turns async.
 
-- [x] `sessions` table: id, user_id, expires_at, absolute_expires_at (schema.sql,
+- [x] `sessions` table: id, userId, expires_at, absolute_expires_at (schema.sql,
       read and run on boot). Store `expires_at`/`absolute_expires_at` as BIGINT
       epoch ms (no timezone to get wrong)
 - [x] `mysql2` promise pool in `db.js`; config via `--env-file`; `pool.end()` on
       shutdown. Always `?` placeholders, array params — never concatenation
 - [x] Substitute each `SESSION_MAP` call with DML: login `INSERT`, `auth`
       (SELECT + slide UPDATE; DELETE + 401 on expiry), logout `DELETE`
-      (idempotent), sweep `DELETE WHERE expire_at <= ?` inside a try/catch so a
+      (idempotent), sweep `DELETE WHERE expireAt <= ?` inside a try/catch so a
       rejection in the timer can't kill the process
 - [x] Global error handler: everything here is 500, log server-side, generic body
       (no `err.message` to the client) — every async query rejection forwards to it.
@@ -131,7 +131,7 @@ Deferred to the end of this exercise:
       One function: `server.close` → `clearInterval` → `pool.end`; both signals
       pass it directly (no wrapper, no bogus `err` param)
 - [x] Move `USERS` into MySQL. `users` table (username UNIQUE, displayName,
-      password), seeded idempotently with `INSERT IGNORE`, `sessions.user_id` now a
+      password), seeded idempotently with `INSERT IGNORE`, `sessions.userId` now a
       real FK with `ON DELETE CASCADE`. `findUser`/`findUserById` are SELECTs
       returning `rows[0] ?? null`; every caller awaits. Verified end-to-end (login
       → `/api/me` → restart) — all green.
@@ -368,7 +368,7 @@ request until timeout. `status()` sets, it doesn't send — `sendStatus(204)` or
 `.status(204).send()` is what actually transmits.
 
 **`findUser` selected `username, displayName` but not `id`, and login inserts
-`user.id` into `sessions.user_id`.** So the bind param was `undefined`. mysql2
+`user.id` into `sessions.userId`.** So the bind param was `undefined`. mysql2
 rejects `undefined` outright (`Bind parameters must not contain undefined`), so
 login threw → the error handler turned it into a 500. A SELECT's column list is a
 contract with everything downstream that reads the row; login needed `id` and the
@@ -382,7 +382,7 @@ it next to the valid `DELETE` in logout. The try/catch that (correctly) keeps a
 timer rejection from killing the process also hides a permanently broken query —
 a swallowed error is invisible until you check the logs.
 
-**Sweep comparison inverted: `expire_at >= now`.** Selected the sessions still in
+**Sweep comparison inverted: `expireAt >= now`.** Selected the sessions still in
 the *future* (valid) and spared the expired ones — it would have reaped exactly
 what it should keep. `<= now` is "already past its deadline." Same class as the
 Exercise 4 duration/instant mixups: an operator pointed the wrong way against a
@@ -525,7 +525,7 @@ incoming `X-Request-Id` (a proxy sets it so one request traces across services),
 generate one otherwise. The id is safe in the 500 body; `err.message` is not.
 
 **A foreign key encodes a policy, not just a shape.** `ON DELETE CASCADE` on
-`sessions.user_id` *is* "deleting a user revokes all their sessions" — the DB
+`sessions.userId` *is* "deleting a user revokes all their sessions" — the DB
 enforces it so no application code has to remember to. The constraint lives on the
 child (the table holding the reference), needs matching types and an InnoDB engine,
 and the parent must be created first. Latent until something actually deletes a
