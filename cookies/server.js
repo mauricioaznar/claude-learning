@@ -89,6 +89,43 @@ function signToken(userId, expireAt) {
   return [header,payload,signature].join(".")
 }
 
+
+// the token comes from the header Authorization, this build the access token. the refresh token gets handled in a different place. after the access token was verified, so the parameter value will always come from res.signedCookies[COOKIEs_NAME]
+// reusing the same function to return the payload, if the verified token is not valid, I'll return false, or throw an error (for the moment im returing false), since that can give me an unambigous answer as that the verification failed.
+function verifyToken(token) {
+  const splitToken = token.split('.')
+  if (splitToken.length !== 3) {
+    throw new Error("Invalid token") // the split must be a 3 part string
+  }
+  const [header, payload, oldSignature] = splitToken
+
+  // the are already base64url and the signtoken builds the signature from the base64url format
+  const hmacEncodedArg = [header, payload].join('.') // i may need to substritute this vairable to header, and payload
+  const newSignature = crypto.createHmac("sha256", process.env.ACCESS_TOKEN_SECRET).update(hmacEncodedArg).digest('base64url')
+
+  const a = Buffer.from(oldSignature)
+  const b = Buffer.from(newSignature)
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    console.log('equal time legnth comparison without avoids attacker working out which character makes it fail and discovering the correct token shape but substituing the mismatching character ')
+    throw new Error('Invalid token')
+  }
+
+
+  // i need a way to reconvert the payload into a string format that works
+  // lets do the expireAt check
+  const payloadDecoded = Buffer.from(payload, 'base64url').toString('utf8') // this functions are not correct but Im 100% sure you will suggest me into the right functions. Im trying to rever thte url64url into the original string
+  const payloadObject = JSON.parse(payloadDecoded)
+  const expiresAt = payloadObject.expire_at
+  const userId = payloadObject.user_id
+
+  if(Date.now() > expiresAt) {
+    console.log(`user id '${userId}' token expired`) // ideally we would have the
+    return null;
+  }
+
+  return payloadObject
+}
+
 function errorMiddleware(err, req, res, next) {
   err.status = err.status || 500
   console.error(err)
