@@ -192,7 +192,7 @@ app.post("/api/login", async (req, res) => {
 // ---------------------------------------------------------------------------
 app.get("/api/me", auth, (req, res) => {
   // auth middleware sets the user object
-  return res.status(200).json(req.user );
+  return res.status(200).json(req.user);
 });
 
 app.get("/api/secret", auth, (req, res) => {

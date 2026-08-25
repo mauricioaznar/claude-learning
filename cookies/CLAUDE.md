@@ -160,7 +160,7 @@ structure yourself; passing the secret to `cookieParser()` makes it verify-then-
 unwrap for you, returning the raw value, or `false` on a bad signature (falsy, so
 the existing `if (!value)` 401s a forgery for free).
 
-### 8 — access + refresh tokens ⬜
+### 8 — access + refresh tokens (Steps 1–4 done, Step 5 optional) 🚧
 A **refresh token** is basically the session already built here: long-lived, stored
 server-side, revocable by deleting it. An **access token** is the new idea:
 short-lived and self-contained, checked by signature instead of a lookup.
@@ -190,22 +190,44 @@ Decisions (agreed before coding):
 - **Keep TTLs tiny** so expiry stays observable, same as the session clocks: access
   ~10s, refresh reuses the existing 20s absolute session.
 
-- [ ] **Step 1 — `signToken(payload)`**: JSON header `{alg:"HS256",typ:"JWT"}`,
-      base64url each of header+payload, HMAC-SHA256 the `header.payload` string with
-      `TOKEN_SECRET`, base64url the digest, join with dots. Add `exp` (epoch ms) to
-      the payload.
-- [ ] **Step 2 — `verifyToken(token)`**: split on `.`, recompute the HMAC over the
-      first two segments, **constant-time** compare (`crypto.timingSafeEqual`),
-      reject on mismatch or `exp` past. Return the decoded payload or `null`. `auth`
-      stops doing a `sessions` SELECT and calls this.
-- [ ] **Step 3 — `POST /api/refresh`**: read the refresh cookie, do the DB lookup +
-      expiry checks `auth` used to own, mint a fresh access token, return it in the
-      JSON body. The revocable reference token backs the fast self-contained one.
-- [ ] **Step 4 — transport**: login/refresh return the access token in the body; SPA
-      holds it in a variable, sends `Authorization: Bearer`, and on a 401 calls
-      `/api/refresh` once then retries the original request.
+- [x] **Step 1 — `signToken(userId, displayName, username, expireAt)`**: JSON header
+      `{alg:"HS256",typ:"JWT"}`, base64url each of header+payload, HMAC-SHA256 the
+      `header.payload` string, base64url the digest, join with dots. Payload carries
+      `expireAt` (epoch ms) so `auth` needs no lookup.
+- [x] **Step 2 — `verifyToken(token)`**: split on `.`, recompute the HMAC over the
+      first two segments, **constant-time** compare (`crypto.timingSafeEqual`, guarded
+      by a length check so it can't throw). Returns the payload, or **`false`** on any
+      expected failure (bad structure, bad signature, `expireAt` past) — one falsy
+      shape so the caller never needs a `try/catch`. `auth` is now stateless: read
+      `Authorization: Bearer`, verify, set `req.user`; no `sessions` SELECT.
+- [x] **Step 3 — `POST /api/refresh`**: read the refresh cookie, SELECT the session,
+      absolute-expiry check (delete + 401 on expiry), mint a fresh access token,
+      return it in the JSON body. The revocable reference token backs the fast
+      self-contained one.
+- [x] **Step 4 — transport**: login/refresh return the access token in the body; the
+      SPA holds it in a module variable (memory only), sends `Authorization: Bearer`
+      via an `authedFetch` wrapper, and on a 401 refreshes once then retries the
+      original request. Concurrent 401s are collapsed to one refresh by a
+      **single-flight promise** (`refreshPromise`), so N callers park on one
+      `/api/refresh`.
 - [ ] **Step 5 (optional) — rotation + reuse detection**: each refresh issues a new
       refresh token and deletes the old; a replayed old token means theft → revoke.
+      (The single-flight queue from Step 4 is the precondition — without it, concurrent
+      refreshes would rotate each other out and trip the detector.)
+
+**As built — deviations from the plan.**
+- **Secret names.** `ACCESS_TOKEN_SECRET` signs the JWT; `REFRESH_TOKEN_SECRET` is the
+  `cookie-parser` secret that signs the refresh cookie. (The plan's `TOKEN_SECRET` /
+  `COOKIE_SECRET` renamed to say which layer each guards.)
+- **Absolute-only sessions.** The sliding idle clock was dropped — the `sessions`
+  table lost its `expire_at` column and now carries only `absoluteExpireAt`. So the
+  *only* thing that ends a session is the 20s absolute wall; there is no idle timeout.
+  What we traded: an idle timeout ends a stolen-but-inactive session sooner than the
+  absolute cap. Fine at 20s; in production (absolute in weeks, idle in minutes) that
+  gap is why real systems keep both clocks. The access token's short TTL is **not** an
+  idle timeout — the client refreshes immediately, which is activity, the opposite of
+  idle. Idle would mean refreshes *stopping*, which nothing here measures.
+- **Column names camelCased** (`userId`, `absoluteExpireAt`) to match the JS.
 
 ### Finally — 404 handler + request id ⬜
 Deliberately deferred to the very end (after tokens), because it only pays off once
@@ -400,6 +422,43 @@ threw `ReferenceError` → 500 on every call site. Fourth sighting of the same f
 plain helper sees nothing of the request unless you hand it in — `setCookie`/
 `clearCookie` take `res` for exactly this reason. Fix: `getCookie(req)`.
 
+**`signToken` grew a param; the login call site didn't.** Extended the signature to
+`(userId, displayName, username, expireAt)` and updated the *refresh* call site, but
+login still passed three args. By position, `username` got the timestamp and
+`expireAt` got `undefined` — so `Date.now() > undefined` was always false and the
+login-minted token **never expired**, meaning the SPA never hit `/api/refresh` at
+all. Silent (timestamps fail quietly) and doubly so because the *other* call site was
+correct. Same family as every autocomplete/positional-argument bug above: add a
+param, hunt down *every* caller. Two call sites of one function are two contracts to
+keep in step.
+
+**`if (res.status = 401)`.** Single `=` in a client-side branch — assignment, not
+comparison. It overwrote `res.status` and the condition was always truthy, so *every*
+response was treated as expired. The JS twin of the server-side `res.user(401)` typo:
+one character, silent, and in a branch you only notice when everything behaves as if
+the token is always dead.
+
+**Refreshed the token, then returned the stale 401.** `authedFetch` called
+`ensureFreshToken()` and then `return res` — the *original* failed response. The retry
+was never written: refreshing a token does nothing on its own; "retry" means *issue
+the request again*. The fix is a second `fetch` after the refresh. Wrapping the
+request in an inner `send()` closure made "call it twice" obvious.
+
+**`ensureFreshToken` didn't `return refreshPromise`.** It created the promise but
+returned `undefined`, so `await ensureFreshToken()` awaited nothing and resolved
+instantly — the retry fired *before* the refresh finished, with the token still
+stale. The `return refreshPromise` line *is* the queue; without it there is no
+waiting. Also chained `.then(res => res.json())` onto it, but `doRefresh` returns
+nothing (it parses and stores internally), so that `.then` ran `undefined.json()` and
+rejected. Keep the single-flight flag (`ensureFreshToken`) and the work
+(`doRefresh`) on opposite sides of a clean boundary — don't let the token cross it.
+
+**Gated the refresh on `res.ok` instead of `=== 401`.** `if (firstRes.ok) return`
+sends every non-2xx — a 500, a 403 — down the refresh-and-retry path, firing a
+pointless `/api/refresh` on errors that a new token can't fix. Only a **401** means
+"maybe my token just expired." Also compared the Response *object* to `401`
+(`firstRes !== 401`), which is always true — meant `firstRes.status`.
+
 ## Learnings
 
 **HTTP is stateless.** Every request arrives with no memory of the last one. A
@@ -547,6 +606,35 @@ points at the reader (the INSERT), not the writer (the SELECT that forgot a colu
 keep it off `req.user` than fetching it and scrubbing with `{...user, password:
 undefined}`. Once the column never enters the row, the scrub is dead code and no
 route can leak what was never loaded.
+
+**Signing and statelessness let `auth` skip the DB.** A signed access token is
+self-contained: `auth` recomputes the HMAC and trusts the payload, no `sessions`
+lookup. That speed is the whole point — and its price is that the token *can't be
+revoked*, only expire. So it lives ~10s and is backed by the refresh token (the
+session), which *can* be revoked by `DELETE`. `auth` verifies; `/api/refresh` is the
+only thing that touches the DB.
+
+**`fetch` rejects on network errors; `res.ok` is only about status.** A dropped
+connection / DNS / CORS failure makes the promise *throw* (catch it) — you get no
+`res` at all. `res.ok` is just "status in 200–299", so `!res.ok` already covers 401,
+500, everything non-2xx. Three distinct outcomes: reject (network), `!ok` (non-2xx
+response), `ok` (2xx). Checking `status !== 200` *after* `!res.ok` is dead code.
+
+**Single-flight refresh: the promise IS the queue.** A promise is a value you
+*observe* (`await`), not a function you *call* — the work runs once, when created.
+Store the in-flight refresh in a module variable and guard its creation with
+`if (!refreshPromise)`; the first caller invokes `doRefresh()`, every later caller
+finds the slot full and `await`s the *same object*. N callers, one `/api/refresh`,
+all woken together when it settles. `.finally(() => refreshPromise = null)` resets
+the slot (use `finally`, not `then`, so a failed refresh clears too — otherwise a
+rejected promise wedges every future call). This isn't just tidiness: with rotation,
+concurrent refreshes would invalidate each other and read as token theft.
+
+**"Retry" means re-issue the request.** Getting a fresh token changes nothing on its
+own — you must call `fetch` again. Wrapping the request in an inner `send()` closure
+makes the two attempts (first, then post-refresh) read as one line each, and reading
+the token from module scope inside the closure means the retry automatically picks up
+the value `doRefresh` just stored.
 
 ## Things that keep biting
 

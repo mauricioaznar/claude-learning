@@ -1,4 +1,6 @@
 const app = document.querySelector("#app");
+let accessToken = null;
+let refreshPromise = null;
 
 function navigate(path) {
   history.pushState({}, "", path);
@@ -15,9 +17,58 @@ document.addEventListener("click", (event) => {
 window.addEventListener("popstate", render);
 
 async function fetchMe() {
-  const res = await fetch("/api/me");
+  const res = await authedFetch("/api/me");
   if (!res.ok) return null;
+
   return res.json();
+}
+
+async function authedFetch(url, options= {}) {
+  const send = () => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`
+      }})
+  }
+
+  const firstRes = await send();
+
+  if (firstRes.status !== 401 ) return firstRes;
+
+  await ensureFreshToken()
+
+  return await send()
+}
+
+async function ensureFreshToken() {
+  async function doRefresh (){
+    const res = await fetch("/api/refresh", { method: "POST" });
+    if (!res.ok) {
+      setAccessToken(null)
+      return
+    };
+    const data = await res.json();
+    setAccessToken(data.accessToken);
+    return;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = doRefresh()
+        .finally(() => {
+      refreshPromise = null;
+    })
+  }
+
+
+
+  return refreshPromise
+}
+
+function setAccessToken(at) {
+  accessToken = at;
 }
 
 function loginView() {
@@ -57,6 +108,9 @@ function loginView() {
       return;
     }
 
+    const data = await res.json();
+    setAccessToken(data.accessToken);
+
     navigate("/dashboard");
   });
 }
@@ -81,6 +135,7 @@ function dashboardView(user) {
 
 async function render() {
   const user = await fetchMe();
+  console.log(user)
 
   if (!user) {
     if (location.pathname !== "/login") return navigate("/login");
