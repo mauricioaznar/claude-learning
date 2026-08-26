@@ -12,7 +12,8 @@ const SQL_SCHEMA = path.join(import.meta.dirname, "schema.sql");
 
 const SHORT_MAX_AGE = 10 * 1000; // 10 seconds
 const ABSOLUTE_MAX_AGE = 20 * 1000;// 20 seconds
-const SWEEP_INTERVAL = 15 * 1000 // 15 seconds
+const SWEEP_INTERVAL = 15 * 1000; // 15 seconds
+const GRACE_WINDOW = 5 * 1000; // 5 seconds
 
 
 const COOKIE_NAME = "session_id"
@@ -30,7 +31,7 @@ async function findUser(username, password) {
 }
 
 async function findUserById(id) {
-  const [rows] = await pool.query(`SELECT username, displayName FROM users WHERE id = ?`, [id]);
+  const [rows] = await pool.query(`SELECT username, displayName, id FROM users WHERE id = ?`, [id]);
   return rows.length > 0 ? rows[0] : null;
 }
 
@@ -172,15 +173,16 @@ app.post("/api/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid username or password" });
   }
 
-  const uuid = crypto.randomUUID()
+  const sessionUuid = crypto.randomUUID()
+  const familyUuid = crypto.randomUUID()
 
   const now = Date.now()
   const expireAt = now + SHORT_MAX_AGE
   const absoluteEnd= now  + ABSOLUTE_MAX_AGE
 
 
-  await pool.query(`insert into sessions(uuid, absoluteExpireAt, userId) values (?, ?, ?)`, [uuid, absoluteEnd, user.id])
-  setCookie(res, uuid, now, absoluteEnd)
+  await pool.query(`insert into sessions(sessionUuid, absoluteExpireAt, userId, familyUuid, active) values (?, ?, ?, ?, ?)`, [sessionUuid, absoluteEnd, user.id, familyUuid, 1])
+  setCookie(res, sessionUuid, now, absoluteEnd)
   const accessToken = signToken(user.id, user.displayName, user.username, expireAt)
   return res.status(200).send({
     accessToken: accessToken
@@ -206,52 +208,97 @@ app.get("/api/secret", auth, (req, res) => {
 // ---------------------------------------------------------------------------
 app.post("/api/logout", async (req, res) => {
 
-  const sessionId = getCookie(req);
+  const sessionUuid = getCookie(req);
 
-  if (!sessionId) {
+  if (!sessionUuid) {
     // send status doesnt need to send a body back
     return res.sendStatus(204);
   }
 
+  const [rows] = await pool.query(`select * from sessions where sessionUuid = ?`, [sessionUuid])
+
+
   // http only removes document.cookie prevents theft
   // sameSite: "lax" only from same origin. other domains cannot send the cookie through, will get rejected. links are ok from other webiste to this domain localhost:3000, strict prevents those links from sending the cookie
   clearCookie(res)
+
+  if (rows.length === 0) {
+    return res.sendStatus(204)
+  }
+  const cookieSession = rows[0]
   
   // this query if safe to run becaue regardless if it exists the query wont fail
-  await pool.query(`delete from sessions where uuid = ?`, [sessionId])
+  await pool.query(`update sessions set active = -1 where familyUuid = ?`, [cookieSession.familyUuid])
 
   return res.sendStatus(204);
 });
 
 app.post("/api/refresh", async (req, res) => {
-  const uuid = getCookie(req)
-  if (!uuid) {
+  const sessionUuid = getCookie(req)
+  if (!sessionUuid) {
     return res.status(401).send("Unauthorized");
   }
   
-  const [sessionRows] = await pool.query('SELECT * FROM sessions where uuid = ?', [uuid])
+  const [sessionRows] = await pool.query('SELECT * FROM sessions where sessionUuid = ?', [sessionUuid])
   if (sessionRows.length === 0) {
     return res.status(401).send("Unauthorized");
   }
 
-  const session = sessionRows[0]
-  
-  const now = Date.now()
-  if (now > session.absoluteExpireAt) {
-    clearCookie(res)
-    await pool.query("delete from sessions where uuid = ?", [uuid])
-    return res.status(401).send("Unauthorized");
-  }
-
-  const user = await findUserById(session.userId)
+  const currentSession = sessionRows[0]
+  const user = await findUserById(currentSession.userId)
 
   if (!user) {
     return res.status(401).send("Unauthorized");
   }
 
-  const deadline = Math.min(now + SHORT_MAX_AGE, session.absoluteExpireAt)
-  const accessToken = signToken(session.userId, user.displayName, user.username, deadline)
-  setCookie(res, uuid, now, session.absoluteExpireAt);
+  const now = Date.now()
+
+  if (currentSession.active === 1 && currentSession.absoluteExpireAt <= now) {
+    clearCookie(res)
+    await pool.query("update sessions set active = -1 where familyUuid = ?", [currentSession.familyUuid])
+    return res.status(401).send("Unauthorized");
+  }
+
+  if (currentSession.active === -1) {
+    const [activeSessions] = await pool.query('select * from sessions where familyUuid = ? and active = 1', [currentSession.familyUuid])
+    if (activeSessions.length === 0) {
+      clearCookie(res)
+      return res.status(401).send("Unauthorized");
+    }
+
+    const activeSession = activeSessions[0]
+    // prevent rotation on an expired active session
+    if (activeSession.absoluteExpireAt < now) {
+      await pool.query(`update sessions set active = -1 where sessionUuid = ?`, [activeSession.sessionUuid])
+      clearCookie(res)
+      return res.status(401).send("Unauthorized");
+    }
+    
+    const timeSinceRotation = now - currentSession.rotatedAt
+
+    if (activeSession.active === 1 &&  timeSinceRotation > GRACE_WINDOW) { // possible theft on active chain
+      clearCookie(res)
+      await pool.query('update sessions set active = -1 where familyUuid = ?', [currentSession.familyUuid])
+      return res.status(401).send("Unauthorized");
+    } else if (activeSession.active === 1 &&  timeSinceRotation <= GRACE_WINDOW) {
+      const deadline = Math.min(now + SHORT_MAX_AGE, currentSession.absoluteExpireAt)
+      const accessToken = signToken(currentSession.userId, user.displayName, user.username, deadline)
+      return res.status(200).send({accessToken: accessToken})
+    }
+  }
+
+  const deadline = Math.min(now + SHORT_MAX_AGE, currentSession.absoluteExpireAt)
+  const accessToken = signToken(currentSession.userId, user.displayName, user.username, deadline)
+
+  const newSessionUuid = crypto.randomUUID()
+
+  // update old session
+  await pool.query("update sessions set active = -1, rotatedAt = ? where sessionUuid = ?", [now, currentSession.sessionUuid])
+
+  // insert new session
+  await pool.query('insert into sessions (active, userId, sessionUuid, familyUuid, absoluteExpireAt) values(?, ?, ?, ?, ?)', [1, currentSession.userId, newSessionUuid, currentSession.familyUuid, currentSession.absoluteExpireAt])
+
+  setCookie(res, newSessionUuid, now, currentSession.absoluteExpireAt);
   
   
   return res.status(200).send({
@@ -296,7 +343,7 @@ const server = app.listen(PORT, async () => {
 
   intervalRef =setInterval(async () => {
     try {
-      await pool.query(`delete from sessions where absoluteExpireAt <= ?`, [Date.now()])
+      await pool.query(`update sessions set active = -1 where absoluteExpireAt <= ?`, [Date.now()])
     } catch (e) {
       console.log('interval get sessions query failed')
     }
