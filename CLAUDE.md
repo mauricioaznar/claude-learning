@@ -9,6 +9,7 @@ that Mau can rebuild each feature unaided later.
 | Project | Topic | Status |
 | --- | --- | --- |
 | `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–7 done, next — access + refresh tokens |
+| `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Scaffolded, next — Exercise 0 (Express under TS) |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so

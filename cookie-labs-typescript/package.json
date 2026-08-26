@@ -1,0 +1,29 @@
+{
+  "name": "cookie-labs-typescript",
+  "version": "1.0.0",
+  "description": "Access + refresh tokens from scratch, in TypeScript",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch --env-file=.env --import tsx src/server/server.ts",
+    "dev:client": "tsc --watch --preserveWatchOutput --project tsconfig.client.json",
+    "build:client": "tsc --project tsconfig.client.json",
+    "typecheck": "tsc --noEmit --project tsconfig.server.json && tsc --noEmit --project tsconfig.client.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "mysql2": "^3.23.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

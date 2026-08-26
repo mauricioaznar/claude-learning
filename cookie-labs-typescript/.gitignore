@@ -1,0 +1,9 @@
+node_modules/
+
+# Compiled client output (tsc emits these from src/client)
+public/app.js
+public/app.js.map
+public/*.d.ts
+
+# Secrets
+.env

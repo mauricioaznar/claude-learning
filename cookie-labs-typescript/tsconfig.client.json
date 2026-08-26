@@ -1,0 +1,12 @@
+{
+  "// note": "Client code runs in the browser. It has the DOM but NOT Node. tsc actually emits here: src/client/app.ts -> public/app.js, which index.html loads as a module.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": false,
+    "outDir": "public",
+    "rootDir": "src/client"
+  },
+  "include": ["src/client"]
+}

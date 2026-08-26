@@ -1,0 +1,9 @@
+{
+  "// note": "Server code runs under Node (via tsx). No DOM. tsx compiles at run time, so tsc only type-checks here (noEmit inherited).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src/server"]
+}
