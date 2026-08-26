@@ -28,11 +28,36 @@ Then open the port the server logs (pick one in Ex 0; the old lab used 3000).
 Log in with `mau` / `hunter2`. Needs a running MySQL and a `cookie_labs_ts`
 database (see `.env`); `schema.sql` creates the tables and seeds the users on boot.
 
+## Structure & conventions
+
+**`server.ts` is configuration only.** It wires the app together and starts it —
+middleware, static serving, schema-on-boot, `listen`, the error handler. It holds
+**no route logic**. If `server.ts` is deciding *what a request does*, that belongs
+in `routes/` or `middlewares/` and gets mounted/`use`d from `server.ts`.
+
+Everything lives in a folder by role:
+
+```
+src/server/
+  server.ts       app setup: middleware wiring, static, schema boot, listen, error handler
+  db.ts           the MySQL pool
+  routes/         route modules (one per feature area), mounted in server.ts
+  middlewares/    reusable middleware — auth, ...
+  helpers/        pure helpers with NO req/res — signToken, verifyToken, cookie/token utils
+```
+
+**Helpers never touch `req`/`res`.** They take plain values and return plain
+values, so they're reusable from any route and testable without a fake request.
+`signToken(userId, …)` returning a string is a helper; a thing that reads
+`req.headers` and calls `res.status()` is middleware. Keep the boundary sharp —
+that separation is *why* a helper can be reused, and mixing `req` into one is how
+it stops being reusable.
+
 ## Exercises
 
 ### Phase 0 — Express under TypeScript
 
-#### 0 — minimal server, compiling and running ⬜
+#### 0 — minimal server, compiling and running ✅
 Write `src/server/server.ts`: read + run `schema.sql` on boot, serve the SPA from
 `public/`, add one health route, listen and log the URL. No token routes yet.
 
