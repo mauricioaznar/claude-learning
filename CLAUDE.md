@@ -8,7 +8,7 @@ that Mau can rebuild each feature unaided later.
 
 | Project | Topic | Status |
 | --- | --- | --- |
-| `cookies/` | Cookie-based session auth (Express + SPA) | Exercises 1–7 done, next — access + refresh tokens |
+| `cookies/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
 | `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Scaffolded, next — Exercise 0 (Express under TS) |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`

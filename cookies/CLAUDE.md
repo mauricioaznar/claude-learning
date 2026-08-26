@@ -160,7 +160,7 @@ structure yourself; passing the secret to `cookieParser()` makes it verify-then-
 unwrap for you, returning the raw value, or `false` on a bad signature (falsy, so
 the existing `if (!value)` 401s a forgery for free).
 
-### 8 — access + refresh tokens (Steps 1–4 done, Step 5 optional) 🚧
+### 8 — access + refresh tokens ✅
 A **refresh token** is basically the session already built here: long-lived, stored
 server-side, revocable by deleting it. An **access token** is the new idea:
 short-lived and self-contained, checked by signature instead of a lookup.
@@ -210,7 +210,7 @@ Decisions (agreed before coding):
       original request. Concurrent 401s are collapsed to one refresh by a
       **single-flight promise** (`refreshPromise`), so N callers park on one
       `/api/refresh`.
-- [ ] **Step 5 (optional) — rotation + reuse detection**: each refresh issues a new
+- [x] **Step 5 — rotation + reuse detection**: each refresh issues a new
       refresh token and deletes the old; a replayed old token means theft → revoke.
       (The single-flight queue from Step 4 is the precondition — without it, concurrent
       refreshes would rotate each other out and trip the detector.)
