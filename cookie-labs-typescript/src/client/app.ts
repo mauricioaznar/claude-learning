@@ -15,6 +15,7 @@ let accessToken: string | null = null;
 interface User {
   displayName: string;
   username: string;
+  userId: number;
 }
 
 function navigate(path: string): void {
@@ -32,9 +33,20 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("popstate", () => void render());
 
+
+async function authFetch (url: string, options: Record<string, any> | undefined = {}) {
+
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options?.headers || {}),
+      "Authorization": `Bearer ${accessToken}`,
+    }
+  })
+}
 async function fetchMe(): Promise<User | null> {
-  // TODO(phase-1): route this through authedFetch so it carries the Bearer token.
-  const res = await fetch("/api/me");
+  const res = await authFetch("/api/me");
   if (!res.ok) return null;
   return (await res.json()) as User;
 }

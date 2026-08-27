@@ -11,3 +11,12 @@ export const DB_PORT = Number(requireEnv("DB_PORT"));
 export const DB_USER = requireEnv("DB_USER");
 export const DB_PASSWORD =  requireEnv("DB_PASSWORD");
 export const DB_NAME = requireEnv("DB_NAME");
+
+
+export const DB_CONFIG_CONNECTION_PARAMS = {
+    host: DB_HOST,
+    port: DB_PORT,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+}

@@ -16,6 +16,7 @@ import path from 'path'
 import {readFile} from "fs/promises";
 import { pool } from './config/db'
 import authRouter  from "./routes/auth";
+import {authMiddleware} from "./middleware/auth";
 
 const PORT = process.env.PORT || 3000;
 const SCHEMA_PATH = path.join(import.meta.dirname ,'../../', 'schema.sql');
@@ -34,8 +35,14 @@ app.get('/health', (req: express.Request, res: express.Response) => {
 })
 
 app.use('/api/auth', authRouter);
-const temporaryResourcesRouter = express.Router();
-app.use('/api/resources', temporaryResourcesRouter);
+app.use('/api/me', authMiddleware, (req, res) => {
+    return res.status(200).send(
+         {
+            ...req.user,
+            expireAt: undefined
+        }
+    );
+});
 
 app.use('/api', (req, res) => {
     return res.status(404).send({

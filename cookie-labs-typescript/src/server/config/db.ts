@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-import {DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER} from "./config";
+import {DB_CONFIG_CONNECTION_PARAMS} from "./config";
 
 // A *pool* is a set of reusable TCP connections to MySQL. You never open or
 // close a connection per query: the pool lends one for the duration of a query
@@ -9,11 +9,7 @@ import {DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER} from "./config";
 // createPool is lazy: it does not dial MySQL until the first query runs, so
 // importing this file is safe even before the database exists.
 export const pool = mysql.createPool({
-  host: DB_HOST,
-  port: DB_PORT,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_NAME,
+  ...DB_CONFIG_CONNECTION_PARAMS,
   waitForConnections: true, // queue queries when all connections are busy
   connectionLimit: 10, // max simultaneous connections the pool will open
   multipleStatements: true, // needed to run schema.sql (several statements) in one call
