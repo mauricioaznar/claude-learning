@@ -10,6 +10,7 @@
 // Search for TODO(phase-1) / TODO(phase-2) below for where each hooks in.
 
 const app = document.querySelector<HTMLElement>("#app")!;
+let accessToken: string | null = null;
 
 interface User {
   displayName: string;
@@ -60,7 +61,7 @@ function loginView(): void {
     error.hidden = true;
 
     const data = new FormData(form);
-    const res = await fetch("/api/login", {
+    const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -76,7 +77,8 @@ function loginView(): void {
       return;
     }
 
-    // TODO(phase-1): read { accessToken } from the response body and store it in memory.
+    accessToken = (await res.json()).accessToken;
+
     navigate("/dashboard");
   });
 }
@@ -94,7 +96,7 @@ function dashboardView(user: User): void {
   document.querySelector<HTMLElement>("#username")!.textContent = user.username;
 
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", async () => {
-    await fetch("/api/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST" });
     // TODO(phase-1): also drop the in-memory access token here.
     navigate("/login");
   });

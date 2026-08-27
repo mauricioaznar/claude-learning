@@ -9,7 +9,7 @@ that Mau can rebuild each feature unaided later.
 | Project | Topic | Status |
 | --- | --- | --- |
 | `cookies/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
-| `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Scaffolded, next — Exercise 0 (Express under TS) |
+| `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–2 done; next — Ex 3 (auth middleware + `/api/me`) |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so
@@ -52,6 +52,13 @@ end, and keep the ones that were embarrassing — those are the ones that recur.
 - **Runtime checks still decide the truth.** `curl -i` and DevTools are what
   confirm a fix — several bugs here were invisible from the browser and obvious
   in the response headers. That verification just happens on Mau's side.
+- **Offer alternatives and teach, don't just approve.** Mau is here to
+  understand every line, not just pass the exercise. On every review, even when
+  his answer already works: name the idiomatic pattern, surface other viable
+  approaches with their trade-offs, correct loose terminology, and flag
+  duplicated/unnecessary logic and code-organization improvements (he keeps files
+  under ~200 lines). Say which option you'd pick and why — a menu, then a
+  recommendation.
 - **Hint, don't solve.** When a review turns up a bug, first say *what* is wrong
   and roughly where — the symptom and the area to look at, not the fix. Hand over
   more specific hints only if Mau asks again. Corrected code is the last resort,

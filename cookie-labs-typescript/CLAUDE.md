@@ -102,7 +102,7 @@ HMAC over the first two segments, **constant-time**-compares it
 (`crypto.timingSafeEqual`, length-guarded so it can't throw), checks expiry, and
 returns the payload or a single falsy value on any expected failure.
 
-#### 2 — login mints an access token ⬜
+#### 2 — login mints an access token ✅
 `POST /api/login` validates credentials against `users`, mints a short-TTL access
 token (~10s so expiry is observable), returns it in the JSON body. Client holds it
 in memory and sends `Authorization: Bearer <token>` via an `authedFetch` wrapper.
