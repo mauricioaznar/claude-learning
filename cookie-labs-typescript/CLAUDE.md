@@ -95,7 +95,7 @@ write the code):
 
 ### Phase 1 — access token, no refresh yet
 
-#### 1 — `signToken` / `verifyToken` by hand ⬜
+#### 1 — `signToken` / `verifyToken` by hand ✅
 A JWT is just `base64url(header).base64url(payload).base64url(HMAC-SHA256)`.
 `signToken(...)` builds it; `verifyToken(token)` splits on `.`, recomputes the
 HMAC over the first two segments, **constant-time**-compares it
@@ -140,6 +140,23 @@ means theft → revoke the family.
 off. TypeScript will catch some of the JS lab's bugs at compile time (the
 `session.expiresAt` vs `expireAt` typo, the wrong-arity finder calls); note which
 ones it caught, because that contrast is the point of redoing this in TS.*
+
+**Ex 1 — `verifyToken` always returned false; the compiler was happy.** *Symptom:*
+every token failed verification even though signing looked right. *Cause:* the
+payload was decoded from base64url to a *string* but never `JSON.parse`d, and an
+`as AccessTokenPayload` cast silenced the compiler — so `typeof payload` was
+`"string"`, the `!== "object"` guard tripped, and it bailed before the signature
+check. *Fix:* add the second decode step (`JSON.parse`). Lesson: a cast changes
+what the compiler *believes*, not what you *hold* at runtime — TS did not and
+could not catch this, because `as` is you overriding it.
+
+**Ex 1 — `verifyToken` threw a 500 on malformed input instead of returning a clean
+"no".** *Symptom:* a garbage token like `"aaa.bbb.ccc"` crashed the function.
+*Cause:* `JSON.parse` ran *before* the signature check, so attacker-controlled
+junk reached the parser and threw `SyntaxError`, breaking the "never throw on bad
+input" contract. *Fix:* verify the HMAC first; only a token we signed reaches
+`JSON.parse`, and its payload is then guaranteed to be valid JSON. Verify-then-trust
+is what makes the parse safe.
 
 ## Learnings
 

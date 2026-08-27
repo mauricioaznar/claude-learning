@@ -22,8 +22,8 @@ export interface AccessTokenPayload {
 // The signing secret. `process.env.X` is typed `string | undefined`, so guard it
 // once here — a missing secret should fail loudly at boot, not silently sign
 // tokens with the string "undefined".
-const SECRET = process.env.ACCESS_TOKEN_SECRET;
-if (!SECRET) {
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+if (!ACCESS_TOKEN_SECRET) {
   throw new Error("ACCESS_TOKEN_SECRET is not set");
 }
 
@@ -46,10 +46,60 @@ if (!SECRET) {
  * it never sees req/res.
  */
 export function signToken(
-  userId: number,
-  displayName: string,
-  username: string,
-  expireAt: number,
+  payload: AccessTokenPayload,
+
 ): string {
-  throw new Error("signToken: not implemented");
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url')
+    const encodedHeader = Buffer.from(JSON.stringify({alg: "HS256", typ: "JWT"})).toString('base64url')
+    const hmacArg = encodedHeader + '.' + encodedPayload
+    const signature = crypto.createHmac('sha256', ACCESS_TOKEN_SECRET).update(hmacArg).digest("base64url")
+    return hmacArg + "." + signature
+}
+
+/**
+ * verifyToken — validate a token and hand back a payload you can trust, or a
+ * single falsy value on ANY expected failure. It must never throw on garbage
+ * input: a malformed, tampered, or expired token is a normal "no" answer, not a
+ * crash. Callers (the `auth` middleware) treat falsy as "not authenticated".
+ *
+ * Principles (the order and the traps matter more than the keystrokes):
+ *   - Verify the signature FIRST, then trust the payload. Anything you read out
+ *     of the payload before the HMAC checks out is attacker-controlled data.
+ *   - The constant-time compare has a direction and a length trap:
+ *     `crypto.timingSafeEqual(a, b)` returns TRUE when the buffers are equal,
+ *     and THROWS if their lengths differ — so length-guard before you call it,
+ *     and be deliberate about which outcome means "reject".
+ *   - Decoding the payload is TWO steps: base64url -> string, then string ->
+ *     object. `Buffer.from(x, "base64url").toString("utf8")` gives you the JSON
+ *     *text*; you still have to parse it into an object before `.expireAt` means
+ *     anything. A cast (`as AccessTokenPayload`) changes what the compiler
+ *     believes, not what you actually hold at runtime.
+ *   - Expiry is checked HERE, not in the middleware. verifyToken is the pure,
+ *     reusable gate: every caller should get "valid signature AND not expired"
+ *     from one place. The middleware's job is req/res plumbing (read the header,
+ *     set req.user, send 401) — not crypto or clock logic.
+ */
+export function verifyToken(token: string): AccessTokenPayload | false {
+    const splitToken = token.split('.')
+    if (splitToken.length !== 3) {
+        return false
+    }
+    const [headerEncoded, payloadEncoded, signature] = splitToken
+
+    const revisedSignature = crypto.createHmac('sha256', ACCESS_TOKEN_SECRET).update(`${headerEncoded}.${payloadEncoded}`).digest('base64url')
+    const a = Buffer.from(signature)
+    const b = Buffer.from(revisedSignature)
+    if(a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        return false
+    }
+
+    const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64url').toString('utf8')) as AccessTokenPayload
+
+    const { expireAt } = payload
+    const now = Date.now()
+    if (expireAt < now) {
+        return false
+    }
+
+    return payload
 }
