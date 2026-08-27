@@ -107,7 +107,7 @@ returns the payload or a single falsy value on any expected failure.
 token (~10s so expiry is observable), returns it in the JSON body. Client holds it
 in memory and sends `Authorization: Bearer <token>` via an `authedFetch` wrapper.
 
-#### 3 — `auth` middleware + protected `/api/me` ⬜
+#### 3 — `auth` middleware + protected `/api/me` ✅
 Middleware reads the Bearer header, `verifyToken`s it, sets `req.user`; `/api/me`
 is guarded by it and the dashboard renders from it. Logout here is just the client
 dropping the token — there's nothing server-side to revoke yet. **Sit with that

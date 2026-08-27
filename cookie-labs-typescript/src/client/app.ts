@@ -109,7 +109,7 @@ function dashboardView(user: User): void {
 
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    // TODO(phase-1): also drop the in-memory access token here.
+    accessToken = null;
     navigate("/login");
   });
 }

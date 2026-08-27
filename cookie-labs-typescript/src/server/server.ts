@@ -16,6 +16,7 @@ import path from 'path'
 import {readFile} from "fs/promises";
 import { pool } from './config/db'
 import authRouter  from "./routes/auth";
+import meRouter  from "./routes/me";
 import {authMiddleware} from "./middleware/auth";
 
 const PORT = process.env.PORT || 3000;
@@ -35,14 +36,7 @@ app.get('/health', (req: express.Request, res: express.Response) => {
 })
 
 app.use('/api/auth', authRouter);
-app.use('/api/me', authMiddleware, (req, res) => {
-    return res.status(200).send(
-         {
-            ...req.user,
-            expireAt: undefined
-        }
-    );
-});
+app.use('/api/me', authMiddleware, meRouter);
 
 app.use('/api', (req, res) => {
     return res.status(404).send({
