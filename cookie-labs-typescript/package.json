@@ -19,7 +19,7 @@
     "mysql2": "^3.23.4"
   },
   "devDependencies": {
-    "@types/cookie-parser": "^1.4.9",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "concurrently": "^9.0.0",

@@ -14,3 +14,10 @@ INSERT IGNORE INTO users (username, displayName, password) VALUES ('ada', 'Ada',
 
 -- The `sessions` table (the refresh token) arrives in Phase 2. It stays out of
 -- here until then so Phase 1 is pure access-token work with nothing to revoke.
+
+CREATE TABLE IF NOT EXISTS sessions (
+    sessionUuid varchar(36) PRIMARY KEY not null,
+    userId int not null,
+    absoluteExpireAt bigint not null,
+    foreign key (userId) references users(id) on delete cascade
+);

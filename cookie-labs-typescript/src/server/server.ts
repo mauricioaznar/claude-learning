@@ -18,6 +18,8 @@ import { pool } from './config/db'
 import authRouter  from "./routes/auth";
 import meRouter  from "./routes/me";
 import {authMiddleware} from "./middleware/auth";
+import cookieParser from "cookie-parser";
+import {REFRESH_TOKEN_SECRET} from "./config/config";
 
 const PORT = process.env.PORT || 3000;
 const SCHEMA_PATH = path.join(import.meta.dirname ,'../../', 'schema.sql');
@@ -27,6 +29,7 @@ const PUBLIC_PATH = path.join(import.meta.dirname, '../../','public');
 export const app = express();
 
 app.use(express.json());
+app.use(cookieParser(REFRESH_TOKEN_SECRET));
 app.use(express.static(PUBLIC_PATH));
 
 app.get('/health', (req: express.Request, res: express.Response) => {

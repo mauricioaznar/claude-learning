@@ -4,16 +4,16 @@
 import {requireEnv} from "./require-env";
 
 export const ACCESS_TOKEN_SECRET = requireEnv("ACCESS_TOKEN_SECRET");
-
+export const REFRESH_TOKEN_SECRET = requireEnv("REFRESH_TOKEN_SECRET");
 
 export const DB_HOST = requireEnv("DB_HOST");
 export const DB_PORT = Number(requireEnv("DB_PORT"));
 export const DB_USER = requireEnv("DB_USER");
 export const DB_PASSWORD =  requireEnv("DB_PASSWORD");
-export const DB_NAME = requireEnv("DB_NAME");
+export const DB_NAME =  requireEnv("DB_NAME");
 
 
-export const DB_CONFIG_CONNECTION_PARAMS = {
+    export const DB_CONFIG_CONNECTION_PARAMS = {
     host: DB_HOST,
     port: DB_PORT,
     user: DB_USER,

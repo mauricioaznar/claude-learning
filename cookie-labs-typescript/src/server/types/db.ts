@@ -7,6 +7,12 @@ export interface UserRow extends RowDataPacket {
     id: number;
 }
 
+export interface SessionRow extends RowDataPacket {
+    sessionUuid: string;
+    userId: number;
+    absoluteExpireAt: number;
+}
+
 // A JWT is not encrypted and not magic. It is three base64url strings joined by
 // dots:  base64url(header) . base64url(payload) . base64url(HMAC)
 // Anyone can read the header and payload (base64url is just encoding, not a
