@@ -11,6 +11,7 @@
 
 const app = document.querySelector<HTMLElement>("#app")!;
 let accessToken: string | null = null;
+let isRefresh: Promise<void> | null = null;
 
 interface User {
   displayName: string;
@@ -35,15 +36,45 @@ window.addEventListener("popstate", () => void render());
 
 
 async function authFetch (url: string, options: Record<string, any> | undefined = {}) {
+  const send = () => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options?.headers || {}),
+        "Authorization": `Bearer ${accessToken}`,
+      }
+    })
+  }
 
+  const firstTry = await send()
 
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...(options?.headers || {}),
-      "Authorization": `Bearer ${accessToken}`,
+  if (firstTry.status !== 401) {
+    return firstTry
+  }
+  await ensureRefresh()
+  return send()
+}
+
+async function ensureRefresh() {
+  async function doRefresh() {
+    const response = await fetch("/api/auth/session/refresh", {
+      method: "POST",
+    })
+    if (!response.ok) {
+      accessToken = null
+      return
     }
-  })
+
+    const {accessToken: at } = await response.json()
+    accessToken = at
+    return
+  }
+
+  if (!isRefresh) {
+    isRefresh = doRefresh().finally(() => isRefresh = null)
+  }
+
+  return isRefresh
 }
 async function fetchMe(): Promise<User | null> {
   const res = await authFetch("/api/me");

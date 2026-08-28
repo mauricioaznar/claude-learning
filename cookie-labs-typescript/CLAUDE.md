@@ -125,7 +125,7 @@ Read the refresh cookie, check the session (delete + 401 on expiry), mint a fres
 access token, return it in the body. The revocable reference token backs the fast
 self-contained one.
 
-#### 6 — client refresh-and-retry + single-flight ⬜
+#### 6 — client refresh-and-retry + single-flight ✅
 `authedFetch`: on a 401, refresh once then retry the original request. Collapse
 concurrent 401s onto one `/api/refresh` with a single-flight promise. Logout now
 `DELETE`s the session.
@@ -161,3 +161,31 @@ is what makes the parse safe.
 ## Learnings
 
 *Concepts that stuck, in plain words, written for a cold reader.*
+
+**Single-flight needs no lock, because JS runs to completion.** One thread, one
+task at a time; a task runs uninterrupted until it hits an `await`, then yields.
+So a check-then-set like `if (!isRefresh) isRefresh = doRefresh()` is atomic *as
+long as there is no `await` between the check and the set* — the first caller sets
+`isRefresh` before it ever yields, so the second caller sees it already set and
+skips. Put an `await` between the check and the assignment and the guarantee is
+gone: both callers can pass the check and you get a double refresh.
+
+**The shared promise must cover the thing callers actually wait for.** First cut
+of Ex 6 collapsed the refresh *network call* onto one promise, but the
+`accessToken = ...` assignment lived in the first caller's private continuation
+(after its own extra `await res.json()`). Concurrent callers awaited the network
+promise, so they unblocked and retried *before* the token existed — with the stale
+token. Fix: move parse-and-assign *inside* the shared promise (`doRefresh`), so it
+doesn't resolve until `accessToken` is set. Everyone waits for the real payload,
+not just the request.
+
+**An `async` function always returns a `Promise`; `await` inside only changes the
+route.** `return fetch()` makes the function's promise *adopt* fetch's promise
+(promises flatten — never `Promise<Promise<…>>`). `return await fetch()` unwraps
+to a `Response` inside, then `async` re-wraps it into a promise on the way out.
+Same type to the caller (`Promise<Response>`), same resolved value. The *only*
+observable difference is with a surrounding `try/catch/finally`: `return await`
+keeps the function parked in the `try` until the promise settles, so `catch` can
+catch and `finally` runs at the right time; a bare `return` hands off the promise
+and leaves the `try` immediately. This is exactly why `ensureRefresh`'s
+`try/finally` (which resets `isRefresh = null`) needs the `await`.
