@@ -108,7 +108,7 @@ function dashboardView(user: User): void {
   document.querySelector<HTMLElement>("#username")!.textContent = user.username;
 
   document.querySelector<HTMLButtonElement>("#logout")!.addEventListener("click", async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/session/logout", { method: "POST" });
     accessToken = null;
     navigate("/login");
   });

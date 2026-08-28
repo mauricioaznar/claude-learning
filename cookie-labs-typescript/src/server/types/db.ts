@@ -11,6 +11,7 @@ export interface SessionRow extends RowDataPacket {
     sessionUuid: string;
     userId: number;
     absoluteExpireAt: number;
+    revokedAt: number | null;
 }
 
 // A JWT is not encrypted and not magic. It is three base64url strings joined by

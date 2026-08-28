@@ -1,4 +1,4 @@
-import {COOKIE_NAME} from "../config/constants";
+import {COOKIE_NAME, COOKIE_PATH} from "../config/constants";
 import {CookieOptions, Response, Request} from 'express'
 
 export function setCookie(res: Response, sessionUuid: string, duration: number): void {
@@ -6,7 +6,7 @@ export function setCookie(res: Response, sessionUuid: string, duration: number):
 }
 
 export function clearCookie(res: Response): void {
-    res.clearCookie(COOKIE_NAME);
+    res.clearCookie(COOKIE_NAME, {path: COOKIE_PATH, signed: true});
 }
 
 export function getCookie(req: Request): string | null {
@@ -21,5 +21,6 @@ function getCookiesOptions(duration: number): CookieOptions {
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         signed: true,
+        path: COOKIE_PATH,
     }
 }

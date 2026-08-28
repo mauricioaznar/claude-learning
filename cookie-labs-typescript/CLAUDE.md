@@ -116,11 +116,11 @@ missing piece is exactly what Phase 2 adds.
 
 ### Phase 2 — refresh token
 
-#### 4 — the `sessions` table (the refresh token) ⬜
+#### 4 — the `sessions` table (the refresh token) ✅
 Add `sessions` to `schema.sql`. Login also creates a session and sets an httpOnly
 **signed** refresh cookie scoped to `/api/refresh`, with an absolute expiry.
 
-#### 5 — `POST /api/refresh` ⬜
+#### 5 — `POST /api/refresh` ✅
 Read the refresh cookie, check the session (delete + 401 on expiry), mint a fresh
 access token, return it in the body. The revocable reference token backs the fast
 self-contained one.
