@@ -2,19 +2,24 @@ import {pool} from "../config/db";
 import {ResultSetHeader} from "mysql2";
 import {SessionRow} from "../types/db";
 
-async function insertSession(sessionUuid: string, absoluteExpireAt: number, userId: number): Promise<boolean> {
-    const [resultsHeader] = await pool.query<ResultSetHeader>(`insert into sessions (sessionUuid, absoluteExpireAt, userId) values(?, ?, ?)`, [sessionUuid, absoluteExpireAt, userId]);
+async function insertSession(sessionUuid: string, absoluteExpireAt: number, userId: number, familyUuid: string): Promise<boolean> {
+    const [resultsHeader] = await pool.query<ResultSetHeader>(`insert into sessions (sessionUuid, absoluteExpireAt, userId, familyUuid) values(?, ?, ?, ?)`, [sessionUuid, absoluteExpireAt, userId, familyUuid]);
 
     return resultsHeader.affectedRows > 0;
 }
 
-async function deleteSession(sessionUuid: string, revokedAt: number): Promise<boolean> {
+async function revokeSession(sessionUuid: string, revokedAt: number): Promise<boolean> {
     const [ resultHeader ] = await pool.query<ResultSetHeader>(`update sessions set revokedAt = ? where sessionUuid = ?`, [revokedAt, sessionUuid]);
     return resultHeader.affectedRows >  0;
 }
 
+async function revokeFamily(familyUuid: string, revokedAt: number): Promise<boolean> {
+    const [ resultHeader ] = await pool.query<ResultSetHeader>(`update sessions set revokedAt = ? where familyUuid = ? and revokedAt is null`, [revokedAt, familyUuid]);
+    return resultHeader.affectedRows >  0;
+}
+
 async function findSession(sessionUuid: string): Promise<SessionRow | null> {
-    const [sessionRows] = await pool.query<SessionRow[]>(`select * from sessions where sessionUuid = ? and revokedAt is null`, [sessionUuid])
+    const [sessionRows] = await pool.query<SessionRow[]>(`select * from sessions where sessionUuid = ?`, [sessionUuid])
     if (sessionRows.length === 0) {
         return null
     }
@@ -23,6 +28,7 @@ async function findSession(sessionUuid: string): Promise<SessionRow | null> {
 
 export default {
     insertSession,
-    deleteSession,
+    revokeSession,
+    revokeFamily,
     findSession
 }

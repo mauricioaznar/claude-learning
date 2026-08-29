@@ -36,14 +36,18 @@ authRouter.post('/session/logout', async (req, res) => {
 authRouter.post('/session/refresh', async (req, res) => {
     const cookie = getCookie(req);
     if (!cookie) {
+        clearCookie(res)
         return res.status(401).json({error: "Unauthorized"});
     }
     const refreshResult = await authService.refresh(cookie)
 
-    if (!refreshResult) return res.status(401).json({error: "Unauthorized"});
+    if (!refreshResult){
+        clearCookie(res)
+        return res.status(401).json({error: "Unauthorized"});
+    }
 
-    const { accessToken} = refreshResult
-
+    const { accessToken, sessionUuid, sessionDuration} = refreshResult
+    setCookie(res, sessionUuid, sessionDuration)
     return res.status(200).json({
         accessToken,
     })

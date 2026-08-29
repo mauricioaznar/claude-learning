@@ -17,6 +17,7 @@ INSERT IGNORE INTO users (username, displayName, password) VALUES ('ada', 'Ada',
 
 CREATE TABLE IF NOT EXISTS sessions (
     sessionUuid varchar(36) PRIMARY KEY not null,
+    familyUuid varchar(36) not null,
     userId int not null,
     absoluteExpireAt bigint not null,
     revokedAt bigint default null,

@@ -130,9 +130,16 @@ self-contained one.
 concurrent 401s onto one `/api/refresh` with a single-flight promise. Logout now
 `DELETE`s the session.
 
-#### 7 (optional) — rotation + reuse detection ⬜
-Each refresh issues a new refresh token and deletes the old; a replayed old token
-means theft → revoke the family.
+#### 7 (optional) — rotation + reuse detection 🚧
+Each refresh issues a new refresh token and revokes the old; a replayed old token
+means theft → revoke the family. **Rotation + reuse detection done** (runtime-proven:
+replaying a rotated token kills the family, and a never-used sibling token dies with
+it). **Pending — grace period:** forgive a benign replay within a short window of
+rotation (a retry / lost Set-Cookie). The naive version is unsafe: `revokedAt` is
+overloaded (rotation vs logout vs family-kill), so a stolen token replayed inside the
+grace window of the kill would be wrongly forgiven. Needs either a distinct kill
+marker or a `replacedBy` successor pointer before grace can be added safely — see the
+`refresh` TODO in `services/auth.ts`.
 
 ## Failures
 

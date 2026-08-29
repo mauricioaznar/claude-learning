@@ -9,6 +9,7 @@ export interface UserRow extends RowDataPacket {
 
 export interface SessionRow extends RowDataPacket {
     sessionUuid: string;
+    familyUuid: string;
     userId: number;
     absoluteExpireAt: number;
     revokedAt: number | null;
