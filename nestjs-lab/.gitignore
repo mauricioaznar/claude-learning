@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.env
+# generated at runtime
+src/schema.gql
+# sqlite lab database
+prisma/lab.db
+prisma/lab.db-journal

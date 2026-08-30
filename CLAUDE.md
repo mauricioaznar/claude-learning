@@ -10,6 +10,7 @@ that Mau can rebuild each feature unaided later.
 | --- | --- | --- |
 | `cookies/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
 | `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; next — Ex 7 (optional: rotation + reuse detection) |
+| `nestjs-lab/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phase 1 done (wrong-way scaffold); Phases 2–4 pending |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so

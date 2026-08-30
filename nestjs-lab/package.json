@@ -1,0 +1,39 @@
+{
+  "name": "nestjs-lab",
+  "version": "0.0.1",
+  "private": true,
+  "description": "NestJS + GraphQL (code-first) + Prisma learning lab: N+1, transactions, DI",
+  "scripts": {
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "build": "nest build",
+    "db:push": "prisma db push",
+    "seed": "ts-node prisma/seed.ts",
+    "reset": "prisma db push --force-reset --skip-generate && npm run seed",
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.10.0",
+    "@nestjs/apollo": "^12.1.0",
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/core": "^10.3.0",
+    "@nestjs/graphql": "^12.1.0",
+    "@nestjs/platform-express": "^10.3.0",
+    "@prisma/client": "^5.10.0",
+    "graphql": "^16.8.1",
+    "reflect-metadata": "^0.2.1",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.3.0",
+    "@nestjs/schematics": "^10.1.0",
+    "@types/node": "^20.11.0",
+    "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

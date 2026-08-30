@@ -1,0 +1,32 @@
+// SQLite so the lab runs with zero DB setup — the file lives at prisma/lab.db.
+// `url` is a literal on purpose (no .env needed for a throwaway lab).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./lab.db"
+}
+
+model Author {
+  id    Int    @id @default(autoincrement())
+  name  String
+  books Book[]
+}
+
+model Book {
+  id       Int      @id @default(autoincrement())
+  title    String
+  author   Author   @relation(fields: [authorId], references: [id])
+  authorId Int
+  reviews  Review[]
+}
+
+model Review {
+  id      Int    @id @default(autoincrement())
+  rating  Int
+  comment String
+  book    Book   @relation(fields: [bookId], references: [id])
+  bookId  Int
+}
