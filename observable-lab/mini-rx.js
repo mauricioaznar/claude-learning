@@ -117,7 +117,7 @@ export const take = (n) => (src) => {
   return new Obs((o) => {
     let count = 0;
     const sub = src.subscribe({
-      next: () => { if (count < n)  { o.next(count++) } },
+      next: (e) => { if (count++ < n)  { o.next(e) } else { o.complete(); } },
     })
     return () => {
       sub.unsubscribe();
