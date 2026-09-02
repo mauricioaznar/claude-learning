@@ -35,7 +35,27 @@ Each maps to one lesson (button 1–9 in the UI).
 
 *(symptom → cause → fix; record as they happen)*
 
-- None yet.
+- **Double teardown / double-complete on reentrancy** (mini-rx rebuild of
+  `subscribe`). *Symptom:* a caller that unsubscribes inside its own `complete`
+  handler makes the recipe's teardown run twice (e.g. `clearInterval` twice —
+  harmless there, but a socket close / refcount / list-removal would corrupt).
+  *Cause:* `closed = true` was set *after* calling `o.complete()`/`o.error()`.
+  While the caller's handler runs, `closed` is still `false`, so a reentrant
+  `unsubscribe()` (or synchronous re-emit) sees the stream as open and fires
+  teardown again. *Fix:* flip the flag first — inside `if (!closed)`, do
+  `closed = true` → notify caller → `teardown()`, in that order. The guard only
+  works if it's set before you hand control to caller code. A defensive
+  `unsubscribe()` on complete is legal and common (the caller can't see the
+  source self-completes), so the lib must make it a free no-op.
+
+- **`take(n)` boundary — one comparison can't do it.** *Symptom:* `count++ < n`
+  emits n values but completes one tick late (waits for the (n+1)th value);
+  reordering to "emit first, then `++count >= n`" completes on time but leaks one
+  value on `take(0)`. *Cause:* each source value needs *two independent*
+  decisions, not one. *Fix:* `if (count < n) o.next(v); count++; if (count >= n)
+  o.complete();` — guard the emit and guard the completion separately. Handles
+  both `take(0)` (emit nothing, complete) and `take(n)` (complete on the nth).
+  Also emit the *value* `v`, not `count`/`n`.
 
 ## Learnings
 

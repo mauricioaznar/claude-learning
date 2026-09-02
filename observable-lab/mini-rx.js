@@ -17,8 +17,6 @@
 
 /* === the engine ================================================== */
 
-import ObservableLab from "./observable-lab.jsx";
-
 export class Obs {
   constructor(subscribeFn) {
     // TODO(mau): store subscribeFn as the recipe. Do NOT run it here.
@@ -32,24 +30,6 @@ export class Obs {
     //     no value escapes after complete/error/teardown.
     //  3. run the recipe with that observer; capture its return as teardown.
     //  4. return an object with an unsubscribe() that closes + tears down once.
-    const o = typeof handler === "function" ? { next: handler } : handler || {}
-    let closed = false;
-    let teardown = (() => {})
-
-    const observer = {
-      next: (v) => { if(!closed) o.next(v); },
-      error: (e) => { if(!closed && o.error) { closed = true; o.error(e);  teardown(); }},
-      complete: () => { if(!closed && o.complete) { closed = true; o.complete(); teardown(); }}
-    }
-
-    teardown = this._subscribeFn(observer) || (() => {});
-
-    return {
-      unsubscribe() {
-        closed = true;
-        teardown();
-      }
-    }
   }
 
   pipe(...ops) {
@@ -78,18 +58,7 @@ export const of = (...vals) => {
 
 // emit 0,1,2,... every `ms`. teardown clears the interval.
 export const interval = (ms) => {
-
   // TODO(mau)
-  // recipe
-  return new Obs((o) => {
-    let n = 0
-    const id = setInterval(() => {
-      o.next(n++)
-    }, ms)
-    return () => {
-      clearInterval(id)
-    }
-  })
 };
 
 // emit `value` once after `ms`, then complete. teardown clears the timeout.
@@ -114,15 +83,6 @@ export const tap = (fn) => (src) => {
 };
 
 export const take = (n) => (src) => {
-  return new Obs((o) => {
-    let count = 0;
-    const sub = src.subscribe({
-      next: (e) => { if (count++ < n)  { o.next(e) } else { o.complete(); } },
-    })
-    return () => {
-      sub.unsubscribe();
-    }
-  })
   // TODO(mau): forward values; after the nth, complete. (emit the nth first)
 };
 
