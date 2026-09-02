@@ -30,11 +30,51 @@ export class Obs {
     //     no value escapes after complete/error/teardown.
     //  3. run the recipe with that observer; capture its return as teardown.
     //  4. return an object with an unsubscribe() that closes + tears down once.
+    const o = typeof handler === 'function' ? { next: handler } : handler || {};
+    let closed = false;
+    let teardown = (() => {})
+
+    const observer = {
+      next: (v) => {
+        if (!closed && o.next) {
+          o.next(v)
+        }
+      },
+      complete: () => {
+        if (!closed) {
+          closed = true;
+          if (o.complete) {
+            o.complete();
+          }
+          teardown();
+        }
+      },
+      error: (e) => {
+        if (!closed) {
+          closed = true;
+          if (o.error) {
+            o.error(e);
+          }
+          teardown();
+        }
+      }
+    }
+
+    teardown = this._subscribeFn(observer) || (() => {});
+
+    return {
+      unsubscribe: () => {
+        if (!closed) {
+          closed = true;
+          teardown();
+        }
+      },
+    }
   }
 
   pipe(...ops) {
     // TODO(mau): thread `this` through each operator left-to-right,
-    // returning the final observable. (one-liner with reduce)
+    return ops.reduce((src, curr) => curr(src), this)
   }
 }
 
@@ -58,7 +98,15 @@ export const of = (...vals) => {
 
 // emit 0,1,2,... every `ms`. teardown clears the interval.
 export const interval = (ms) => {
-  // TODO(mau)
+  return new Obs((observer) => {
+    let n = 0;
+    const id = setInterval(() => {
+      observer.next(n++);
+    }, ms)
+    return () => {
+      clearInterval(id);
+    }
+  })
 };
 
 // emit `value` once after `ms`, then complete. teardown clears the timeout.
@@ -84,6 +132,29 @@ export const tap = (fn) => (src) => {
 
 export const take = (n) => (src) => {
   // TODO(mau): forward values; after the nth, complete. (emit the nth first)
+  return new Obs((observer) => {
+    let count = 0;
+    const sub = src.subscribe({
+      next: (v) => {
+        if (count < n) {
+          observer.next(v);
+          count++
+        }
+        if (count >= n) {
+          observer.complete();
+        }
+      },
+      complete: () => {
+        observer.complete();
+      },
+      error: (e) => {
+        observer.error(e);
+      }
+    })
+    return () => {
+      sub.unsubscribe();
+    }
+  })
 };
 
 export const debounceTime = (ms) => (src) => {
