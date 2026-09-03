@@ -22,9 +22,9 @@ Each maps to one lesson (button 1–9 in the UI).
 1. **[done] Subscribing is what starts it** — an Observable is a stored recipe;
    `subscribe` invokes it, teardown is what invoking it returns.
 2. **[done] Many values over time** — the thing a Promise can't do; `take(n)` completes.
-3. **[ ] map / filter** — each operator returns a *new* Observable subscribing to
+3. **[done] map / filter** — each operator returns a *new* Observable subscribing to
    the previous one. Nothing is mutated.
-4. **[ ] Teardown** — the returned cleanup runs on unsubscribe / complete / error.
+4. **[done] Teardown** — the returned cleanup runs on unsubscribe / complete / error.
 5. **[ ] Cold** — every subscriber re-runs the recipe from scratch.
 6. **[ ] Subject is hot** — one source, shared to all subscribers at once.
 7. **[ ] debounceTime** — discard intermediate values in a quiet window.

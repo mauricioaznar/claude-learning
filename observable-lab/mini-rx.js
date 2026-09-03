@@ -93,7 +93,13 @@ export class Subject extends Obs {
 
 // emit each argument synchronously, then complete.
 export const of = (...vals) => {
-  // TODO(mau)
+  return new Obs((observer) => {
+    vals.forEach((v) => {
+      observer.next(v);
+    });
+    observer.complete();
+    // no teardown needed — nothing async to clear.
+  });
 };
 
 // emit 0,1,2,... every `ms`. teardown clears the interval.
@@ -111,7 +117,15 @@ export const interval = (ms) => {
 
 // emit `value` once after `ms`, then complete. teardown clears the timeout.
 export const timerOnce = (ms, value) => {
-  // TODO(mau)
+  return new Obs((observer) => {
+    const id = setTimeout(() => {
+      observer.next(value);
+      observer.complete();
+    }, ms);
+    return () => {
+      clearTimeout(id);
+    };
+  });
 };
 
 /* === operators (each: (args) => (src) => new Obs) ================ */
@@ -119,15 +133,49 @@ export const timerOnce = (ms, value) => {
 // `src` and forwards UP through the observer it was given (`o`).
 
 export const map = (fn) => (src) => {
-  // TODO(mau): forward fn(v) upward; pass error/complete straight through.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => observer.next(fn(v)),
+      complete: () => observer.complete(),
+      error: (e) => observer.error(e),
+    });
+    return () => {
+      sub.unsubscribe();
+    };
+  });
 };
 
 export const filter = (pred) => (src) => {
-  // TODO(mau): forward v only when pred(v) is true.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        if (pred(v)) {
+          observer.next(v);
+        }
+      },
+      complete: () => observer.complete(),
+      error: (e) => observer.error(e),
+    });
+    return () => {
+      sub.unsubscribe();
+    };
+  });
 };
 
 export const tap = (fn) => (src) => {
-  // TODO(mau): run fn(v) for its side effect, then forward v unchanged.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        fn(v);
+        observer.next(v);
+      },
+      complete: () => observer.complete(),
+      error: (e) => observer.error(e),
+    });
+    return () => {
+      sub.unsubscribe();
+    };
+  });
 };
 
 export const take = (n) => (src) => {
