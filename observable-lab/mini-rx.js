@@ -162,39 +162,31 @@ export const take = (n) => (src) => {
 };
 
 export const debounceTime = (ms) => (src) => {
-  let buffer = []
-  let timerId = null;
   return new Obs((observer) => {
+    let timerId = null;
+    let lastValue = null;
     const sub = src.subscribe({
       next: (v) => {
+        lastValue = v;
         if (!timerId) {
           timerId = setTimeout(() => {
-            buffer.forEach(val => {
-              observer.next(val)
-            })
-            buffer = []
+            observer.next(lastValue)
+            timerId = null
           }, ms)
-          clearTimeout(timerId)
-        } else {
-          buffer = [...buffer, v]
         }
-
       },
       complete: () => {
-        clearTimeout(timerId)
-        buffer = []
+        timerId = null;
         observer.complete()
       },
       error: (e) => {
-        clearTimeout(timerId)
-        buffer = []
+        timerId = null;
         observer.error(e)
       }
     })
     return () => {
       sub.unsubscribe()
-      buffer = [];
-      clearTimeout(timerId);
+      timerId = null;
     }
   })
 };
