@@ -8,43 +8,44 @@
 
    Rules of the game:
    - Type it, don't paste it.
-   - Do the ones the current lesson needs first (1-3: Obs, interval,
-     take, map, filter, tap). Leave the rest as TODO until we reach them.
+   - Order this pass: (1) the engine — Obs, then Subject; (2) creation —
+     interval; (3) take. Get those cold, then move on to debounceTime,
+     then the three flatteners. The Apollo link (Lesson 9) is built
+     inline in the lab, not here — we rebuild it there when we arrive.
    - Vocab check as you go: an *observable* holds a recipe and has
      .subscribe/.pipe; an *observer* is the {next,error,complete} object
      handed INTO a recipe.
+
+   Two failures already recorded in CLAUDE.md — don't relearn them the
+   hard way:
+   - subscribe: flip `closed` to true BEFORE notifying the caller, else a
+     reentrant unsubscribe double-fires teardown.
+   - take(n): two separate guards (emit vs complete), not one comparison.
 ------------------------------------------------------------------- */
 
 /* === the engine ================================================== */
 
 export class Obs {
   constructor(subscribeFn) {
-    // TODO(mau): store subscribeFn as the recipe. Do NOT run it here.
     this._subscribeFn = subscribeFn;
   }
 
   subscribe(handler) {
-    // TODO(mau):
-    //  1. normalize `handler` -> `o` (a bare function becomes { next: fn }).
-    //  2. build a guarded `observer` around `o` using a `closed` flag so
-    //     no value escapes after complete/error/teardown.
-    //  3. run the recipe with that observer; capture its return as teardown.
-    //  4. return an object with an unsubscribe() that closes + tears down once.
-    const o = typeof handler === 'function' ? { next: handler } : handler || {};
+    const o = typeof handler === 'function' ? { next: handler} : handler || {};
     let closed = false;
-    let teardown = (() => {})
+    let teardown = (() => {});
 
     const observer = {
       next: (v) => {
-        if (!closed && o.next) {
-          o.next(v)
+        if (!closed) {
+          o.next(v);
         }
       },
       complete: () => {
         if (!closed) {
           closed = true;
           if (o.complete) {
-            o.complete();
+            o.complete()
           }
           teardown();
         }
@@ -53,39 +54,43 @@ export class Obs {
         if (!closed) {
           closed = true;
           if (o.error) {
-            o.error(e);
+            o.error(e)
           }
           teardown();
         }
       }
     }
-
     teardown = this._subscribeFn(observer) || (() => {});
-
     return {
       unsubscribe: () => {
         if (!closed) {
-          closed = true;
+          closed = true
           teardown();
         }
-      },
+      }
     }
   }
 
   pipe(...ops) {
-    // TODO(mau): thread `this` through each operator left-to-right,
-    return ops.reduce((src, curr) => curr(src), this)
+    return ops.reduce((src, trg) => { return trg(src) }, this)
   }
 }
 
 export class Subject extends Obs {
   constructor() {
-    // TODO(mau): a Subject is hot. Its recipe should register each
-    // observer in a list and return a teardown that removes it.
+    super((observer) => {
+      this._observers.push(observer)
+      return () => {
+        this._observers = this._observers.filter(x => x !== observer)
+      }
+    })
+    this._observers = []
   }
 
   next(v) {
-    // TODO(mau): push `v` to every currently-registered observer.
+    this._observers.slice().forEach(observer => {
+      observer.next(v)
+    })
   }
 }
 
@@ -93,13 +98,7 @@ export class Subject extends Obs {
 
 // emit each argument synchronously, then complete.
 export const of = (...vals) => {
-  return new Obs((observer) => {
-    vals.forEach((v) => {
-      observer.next(v);
-    });
-    observer.complete();
-    // no teardown needed — nothing async to clear.
-  });
+  // TODO(mau)
 };
 
 // emit 0,1,2,... every `ms`. teardown clears the interval.
@@ -107,25 +106,17 @@ export const interval = (ms) => {
   return new Obs((observer) => {
     let n = 0;
     const id = setInterval(() => {
-      observer.next(n++);
+      observer.next(n++)
     }, ms)
     return () => {
-      clearInterval(id);
+      clearInterval(id)
     }
   })
 };
 
 // emit `value` once after `ms`, then complete. teardown clears the timeout.
 export const timerOnce = (ms, value) => {
-  return new Obs((observer) => {
-    const id = setTimeout(() => {
-      observer.next(value);
-      observer.complete();
-    }, ms);
-    return () => {
-      clearTimeout(id);
-    };
-  });
+  // TODO(mau)
 };
 
 /* === operators (each: (args) => (src) => new Obs) ================ */
@@ -133,53 +124,18 @@ export const timerOnce = (ms, value) => {
 // `src` and forwards UP through the observer it was given (`o`).
 
 export const map = (fn) => (src) => {
-  return new Obs((observer) => {
-    const sub = src.subscribe({
-      next: (v) => observer.next(fn(v)),
-      complete: () => observer.complete(),
-      error: (e) => observer.error(e),
-    });
-    return () => {
-      sub.unsubscribe();
-    };
-  });
+  // TODO(mau): forward fn(v) upward; pass error/complete straight through.
 };
 
 export const filter = (pred) => (src) => {
-  return new Obs((observer) => {
-    const sub = src.subscribe({
-      next: (v) => {
-        if (pred(v)) {
-          observer.next(v);
-        }
-      },
-      complete: () => observer.complete(),
-      error: (e) => observer.error(e),
-    });
-    return () => {
-      sub.unsubscribe();
-    };
-  });
+  // TODO(mau): forward v only when pred(v) is true.
 };
 
 export const tap = (fn) => (src) => {
-  return new Obs((observer) => {
-    const sub = src.subscribe({
-      next: (v) => {
-        fn(v);
-        observer.next(v);
-      },
-      complete: () => observer.complete(),
-      error: (e) => observer.error(e),
-    });
-    return () => {
-      sub.unsubscribe();
-    };
-  });
+  // TODO(mau): run fn(v) for its side effect, then forward v unchanged.
 };
 
 export const take = (n) => (src) => {
-  // TODO(mau): forward values; after the nth, complete. (emit the nth first)
   return new Obs((observer) => {
     let count = 0;
     const sub = src.subscribe({
@@ -192,21 +148,55 @@ export const take = (n) => (src) => {
           observer.complete();
         }
       },
-      complete: () => {
-        observer.complete();
-      },
       error: (e) => {
-        observer.error(e);
+        observer.error(e)
+      },
+      complete: () => {
+        observer.complete()
       }
     })
     return () => {
-      sub.unsubscribe();
+      sub.unsubscribe()
     }
   })
 };
 
 export const debounceTime = (ms) => (src) => {
-  // TODO(mau): on each value, reset a timer; only emit when quiet for `ms`.
+  let buffer = []
+  let timerId = null;
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        if (!timerId) {
+          timerId = setTimeout(() => {
+            buffer.forEach(val => {
+              observer.next(val)
+            })
+            buffer = []
+          }, ms)
+          clearTimeout(timerId)
+        } else {
+          buffer = [...buffer, v]
+        }
+
+      },
+      complete: () => {
+        clearTimeout(timerId)
+        buffer = []
+        observer.complete()
+      },
+      error: (e) => {
+        clearTimeout(timerId)
+        buffer = []
+        observer.error(e)
+      }
+    })
+    return () => {
+      sub.unsubscribe()
+      buffer = [];
+      clearTimeout(timerId);
+    }
+  })
 };
 
 /* --- the three flatteners (lesson 8) ---------------------------- */
