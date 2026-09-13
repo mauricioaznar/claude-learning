@@ -12,6 +12,8 @@ that Mau can rebuild each feature unaided later.
 | `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; next — Ex 7 (optional: rotation + reuse detection) |
 | `nestjs-lab/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phase 1 done (wrong-way scaffold); Phases 2–4 pending |
 | `observable-lab/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–2 done; on Lesson 3 (map / filter / tap) |
+| `nestjs-auth-lab/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |
+| `perf-lab/` | Full-stack NestJS + React/Apollo: slow report queries + indexing (back), cache policies + re-renders (front) | Planned — not scaffolded |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so
