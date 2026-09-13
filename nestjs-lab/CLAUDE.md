@@ -73,12 +73,26 @@ see. Predict the fixed count BEFORE writing the fix. Then a request-scoped
 DataLoader-style batcher; then abstract it into generic `toOne` / `toMany`
 helpers so each resolve field is one line. Re-run, watch the count drop.
 
+**Prod reference — review-to-understand** (INOPACK; shipped to prod; spare-time
+deep-read, not a code task): the real N+1 → batch-loader logic — `toOne`/`toMany`
+over `common/helpers/graphql/batch-loader.ts`, the per-request loader on the
+GraphQL context, the `audit.user` name-collapse (`created_by` + `updated_by` → 1
+query), and how/whether the same idea applies to the summary queries. See
+`docs/features/archived/feature-nestjs-resolvefield-loaders.md`.
+
 ### Phase 3 — transactions ⬜ (Mau writes the fix)
 
 Make `createBookWithReviews` throw on the 3rd review; see the orphaned book. Wrap
 in `prisma.$transaction`; prove the rollback. Add a second service whose writes
 join the SAME transaction by threading `Prisma.TransactionClient`; see the bug if
 you forget to pass `tx`.
+
+**Prod reference — review-to-understand** (INOPACK; shipped to prod; spare-time
+deep-read): the real transaction logic — Phase 2a single-service `$transaction`
+header+lines wraps (`upsertOrderSale`/`Quotation`/`Production`/`Transfer`, reads
+kept outside the tx), and Phase 4 cross-service `tx`-threading
+(`client: Prisma.TransactionClient = this.prisma`). See
+`docs/plans/archived/nestjs-maintainability-refactor.md` (Phases 2a & 4).
 
 ### Phase 4 — DI conventions ⬜ (Mau writes the fix)
 
@@ -87,6 +101,12 @@ into one `SharedModule` that exports it. Explain what `exports` means and why
 re-declaring a provider makes a new instance. Then introduce a circular
 dependency and fix it three ways (extract a third service / `forwardRef` /
 which is better).
+
+**Prod reference — review-to-understand** (INOPACK; tech debt; shipped to prod;
+spare-time deep-read, not a code task): DI conventions in the Nest backend — how
+providers/modules are wired, giving shared services a single home, and the DI
+cleanup done in Phase 1. See `docs/features/archived/feature-nestjs-di-conventions.md`
++ `docs/plans/archived/nestjs-maintainability-refactor.md` (Phase 1).
 
 ## Failures
 
