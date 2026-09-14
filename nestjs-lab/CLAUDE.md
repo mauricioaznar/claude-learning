@@ -50,6 +50,19 @@ src/
 
 ## Exercises
 
+### Phase 0 — event-loop sandbox (prereq for Phase 2) 🔧
+Two standalone `node` scripts in `sandbox/`, no Nest/Prisma, built to make the
+batch loader's scheduler readable instead of magic. Predict the output, then run.
+- `01-queues.js` — ordering of sync / `process.nextTick` / promise microtask /
+  `setTimeout`. The point: a microtask or nextTick scheduled *now* runs before
+  the event loop's next macrotask, i.e. before the process does anything else.
+- `02-two-hop.js` — why `createBatchLoader` uses **two** hops
+  (`Promise.resolve().then(() => process.nextTick(flush))`), not one. Same
+  workload under a one-hop vs two-hop scheduler: one-hop closes the batch mid
+  microtask-drain and splits a nested (level-2) key into a 2nd batch; two-hop
+  defers the flush past the full drain, so the nested key joins batch #1. The
+  whole difference is *when `scheduled` gets cleared*.
+
 ### Phase 1 — build it the WRONG way ✅ (scaffolded)
 
 Reproduces all three problems at once so later phases have something to fix:
