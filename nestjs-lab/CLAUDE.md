@@ -58,6 +58,7 @@ run** — the answers below are for confirming, not reading first.
 ```
 node nestjs-lab/sandbox/01-queues.js
 node nestjs-lab/sandbox/02-two-hop.js
+node nestjs-lab/sandbox/03-multi-continuation.js
 ```
 
 - `01-queues.js` — ordering of sync / `process.nextTick` / promise microtask /
@@ -77,6 +78,23 @@ node nestjs-lab/sandbox/02-two-hop.js
   drains, so the nested key arrives while `scheduled` is still set and joins. The
   whole difference is *when `scheduled` gets cleared* relative to the nested
   `load()`.
+- `03-multi-continuation.js` — the faithful case: 5 level-2 loads arriving
+  **staggered** (one microtask-tick apart, via a promise chain, the way graphql
+  resolves `product` inside each row's continuation). **One-hop fires 5 batches**
+  (splits on every continuation — the flush microtask runs before cb2..cb5 even
+  exist); **two-hop fires 1 batch** (the nextTick flush waits until the microtask
+  queue is *empty*, capturing continuations not yet born when it was scheduled).
+  The takeaway 02 can't show: two-hop waits for the queue to reach empty, not
+  merely for the tasks ahead of it.
+
+**The draining is the runtime's, not the loader's.** `createBatchLoader` has no
+drain loop — the two-hop (`Promise.resolve().then(() => process.nextTick(flush))`)
+only *positions* the flush. The load-bearing runtime rule: a `nextTick` scheduled
+from inside a microtask runs only after the whole microtask queue has drained. So
+the flush reads a `queue` that already holds every sibling key, then clears
+`scheduled`. Level-2 "resolving in a microtask" is graphql-js calling the deeper
+resolver off the `.then` in `load` (`schedule().then(v => v.get(key))`), not a
+line in the loader.
 
 **Absorbed:** graphql-js fires sibling resolvers in one synchronous burst, and a
 field one level deeper resolves in a promise continuation (a microtask). The
