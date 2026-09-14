@@ -52,16 +52,37 @@ src/
 
 ### Phase 0 — event-loop sandbox (prereq for Phase 2) 🔧
 Two standalone `node` scripts in `sandbox/`, no Nest/Prisma, built to make the
-batch loader's scheduler readable instead of magic. Predict the output, then run.
+batch loader's scheduler readable instead of magic. **Predict the output, then
+run** — the answers below are for confirming, not reading first.
+
+```
+node nestjs-lab/sandbox/01-queues.js
+node nestjs-lab/sandbox/02-two-hop.js
+```
+
 - `01-queues.js` — ordering of sync / `process.nextTick` / promise microtask /
-  `setTimeout`. The point: a microtask or nextTick scheduled *now* runs before
-  the event loop's next macrotask, i.e. before the process does anything else.
+  `setTimeout`. Prints **A, F, E, C, D, B**: both sync lines first (A, F); then
+  the microtask checkpoint, where Node drains `nextTick` (E) *before* the promise
+  microtasks (C then D, FIFO by registration); the `setTimeout(0)` macrotask (B)
+  last. The point: a microtask or nextTick scheduled *now* runs before the event
+  loop's next macrotask, i.e. before the process does anything else — which is
+  why the batcher defers with a microtask, never a timer.
 - `02-two-hop.js` — why `createBatchLoader` uses **two** hops
   (`Promise.resolve().then(() => process.nextTick(flush))`), not one. Same
-  workload under a one-hop vs two-hop scheduler: one-hop closes the batch mid
-  microtask-drain and splits a nested (level-2) key into a 2nd batch; two-hop
-  defers the flush past the full drain, so the nested key joins batch #1. The
-  whole difference is *when `scheduled` gets cleared*.
+  workload under each scheduler: **one-hop fires 2 batches** (`[L1-a, L1-b,
+  L1-c]` then `[L2-nested]`) — it closes the batch mid microtask-drain, so the
+  nested level-2 key arrives after `scheduled` is already `null` and starts a new
+  batch. **Two-hop fires 1 batch** (`[L1-a, L1-b, L1-c, L2-nested]`) — the flush
+  is deferred to `nextTick`, which runs only after the microtask queue fully
+  drains, so the nested key arrives while `scheduled` is still set and joins. The
+  whole difference is *when `scheduled` gets cleared* relative to the nested
+  `load()`.
+
+**Absorbed:** graphql-js fires sibling resolvers in one synchronous burst, and a
+field one level deeper resolves in a promise continuation (a microtask). The
+two-hop flush waits past the entire microtask drain, so both levels land in one
+batch — the batching window is "one microtask-drain window", not literally one
+tick.
 
 ### Phase 1 — build it the WRONG way ✅ (scaffolded)
 
