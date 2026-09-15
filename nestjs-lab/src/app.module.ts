@@ -7,8 +7,10 @@ import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin
 import { AuthorModule } from './author/author.module';
 import { BookModule } from './book/book.module';
 import { ReviewModule } from './review/review.module';
+import {PrismaModule} from "./prisma/prisma.module";
 
 @Module({
+
   imports: [
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
@@ -18,6 +20,7 @@ import { ReviewModule } from './review/review.module';
       // Modern in-browser query UI at http://localhost:3000/graphql
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
     }),
+    PrismaModule,
     AuthorModule,
     BookModule,
     ReviewModule,

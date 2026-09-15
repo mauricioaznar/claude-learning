@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
 import { AuthorResolver } from './author.resolver';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuthorNameService } from '../shared/author-name.service';
+import { AuthorService } from './author.service';
+import { SharedModule } from '../shared/shared.module';
 
+// Phase 4 circular-dependency exercise (see CLAUDE.md): AuthorService and
+// BookService used to inject each other (module + provider cycle). Fixed the
+// clean way — the shared piece was extracted into BookCountService (SharedModule),
+// so both now depend on that leaf and the author↔book cycle is gone. No
+// forwardRef and no BookModule import remain.
 @Module({
-  // WRONG #1: PrismaService and AuthorNameService are re-declared here AND in
-  // BookModule — each `providers` entry mints a brand-new instance.
-  providers: [AuthorResolver, PrismaService, AuthorNameService],
-  // WRONG #2: exporting the RESOLVER. Resolvers are entry points, not things
-  // other modules consume. Nothing imports AuthorModule to use this, so the
-  // export does nothing.
-  exports: [AuthorResolver],
+  providers: [AuthorResolver, AuthorService],
+  imports: [SharedModule],
+  exports: [AuthorService],
 })
 export class AuthorModule {}

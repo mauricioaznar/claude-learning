@@ -146,13 +146,26 @@ kept outside the tx), and Phase 4 cross-service `tx`-threading
 (`client: Prisma.TransactionClient = this.prisma`). See
 `docs/plans/archived/nestjs-maintainability-refactor.md` (Phases 2a & 4).
 
-### Phase 4 — DI conventions ⬜ (Mau writes the fix)
+### Phase 4 — DI conventions ✅ (Mau wrote the fix)
 
 Export the SERVICE not the resolver; delete dead exports; move the shared service
 into one `SharedModule` that exports it. Explain what `exports` means and why
 re-declaring a provider makes a new instance. Then introduce a circular
 dependency and fix it three ways (extract a third service / `forwardRef` /
 which is better).
+
+Done: `PrismaModule` (`@Global`, provided+exported once, imported once in
+`AppModule`) and `SharedModule` (owns `AuthorNameService`) replace the
+re-declared providers; feature modules `imports` those instead of listing the
+services in their own `providers`; dead resolver exports removed. Proof: the
+`AuthorNameService constructed (instanceId=...)` line prints ONCE at boot (was
+twice). Circular dep: `AuthorService` ⇄ `BookService` built as a real module +
+provider cycle, then fixed with `forwardRef` (both the module `imports` and
+`@Inject(forwardRef(...))` on the ctor params), then re-fixed by extracting the
+shared piece into `BookCountService` (a leaf in `SharedModule`) so both arrows
+point one way and no `forwardRef` remains. Verdict recorded in Learnings.
+(`AuthorService`/`BookService`/`BookCountService` are left as exercise stubs,
+wired to no resolver.)
 
 **Prod reference — review-to-understand** (INOPACK; tech debt; shipped to prod;
 spare-time deep-read, not a code task): DI conventions in the Nest backend — how
@@ -164,10 +177,54 @@ cleanup done in Phase 1. See `docs/features/archived/feature-nestjs-di-conventio
 
 _(symptom → cause → fix; recorded as they happen)_
 
-- none yet.
+- **forwardRef didn't defer; boot still threw the circular-dependency error.**
+  Symptom: with `forwardRef` on the module imports AND on the constructor, Nest
+  still couldn't resolve the cycle. Cause: `@Inject(forwardRef(() => X))` was
+  stacked on the **class** (`@Injectable()` \n `@Inject(...)` \n `class`), not on
+  the constructor **parameter**. `@Inject` is a parameter decorator — on the
+  class it attaches to no injection point, so the injector never deferred. Fix:
+  move it onto the param: `constructor(@Inject(forwardRef(() => X)) private readonly x: X) {}`.
+- **Extracted a third service, boot still failed to resolve it.** Symptom:
+  `Nest can't resolve dependencies of AuthorService (?)` after moving the shared
+  logic into `BookCountService`. Cause: added it to `SharedModule` `providers`
+  but not `exports` — importers can't see a provider that isn't exported. Fix:
+  add it to `exports`. (Same rule that Phase 4's core wiring turns on.)
 
 ## Learnings
 
 _(plain-words concepts that stuck; written for a cold reader)_
 
-- none yet.
+- **`imports` = modules, `providers` = things this module constructs, `exports` =
+  what it shares.** A class listed in a module's `providers` is *constructed by
+  that module's injector* — listing it means building it there. Re-declaring the
+  same class in two modules' `providers` mints two instances. To share one
+  instance, provide+export it in one home module and `import` that module
+  elsewhere; Nest dedupes, so it's built once. (Proven by the `instanceId` log
+  going from 2 → 1.) A service is never put in `imports`; you import the *module*
+  that exports it.
+- **`@Global()` registers into a global scope, but the module still has to be
+  imported once** (in `AppModule`) for its providers to exist. Global only
+  changes *who can inject without importing*, not *whether it's registered*. Use
+  it for genuinely cross-cutting infra (Prisma); the cost is a consumer injects
+  it with no visible `imports` line saying where it came from.
+- **Nest builds a dependency graph, not a top-to-bottom sequence.** Declaration
+  order in `imports`/`providers` is irrelevant — every provider is constructed
+  before whatever injects it. The one thing that can't be ordered is a *cycle*.
+- **`forwardRef` has two layers.** (1) File-load race: circular file imports mean
+  the other class can be `undefined` when a decorator runs; `forwardRef(() => X)`
+  passes a thunk Nest calls later, after all files load. (2) Instance cycle: Nest
+  builds one side with the reference temporarily empty, then back-patches it. The
+  landmine: a `forwardRef`'d dependency is safe in **methods** (runtime) but NOT
+  in the **constructor body** — it may not be built yet.
+- **Two species of cycle → which fix applies.** If both sides reach in for the
+  *same shared piece*, extract that piece into a neutral leaf service — the cycle
+  *disappears*, the graph stays honest, no constructor landmine. If they need
+  each other's *distinct behavior* (true mutual recursion, no shared piece to
+  pull out), extraction has nothing to grab; then `forwardRef` (or dependency
+  inversion via an interface/token, or events) is legitimate, not a smell. Test:
+  does one extracted service absorb what both were calling each other for?
+- **Dependency direction is the real cycle-preventer.** Leaf/shared modules
+  should be *consumed, never consume upward*. A module with no outgoing edge to a
+  feature module can't close a loop. Watch `SharedModule` for grab-bag rot — the
+  moment it holds two unrelated concerns, split it (that's why Prisma got its own
+  module).

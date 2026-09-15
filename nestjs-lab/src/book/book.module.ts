@@ -1,12 +1,13 @@
-import { Module } from '@nestjs/common';
+import {forwardRef, Module} from '@nestjs/common';
 import { BookResolver } from './book.resolver';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuthorNameService } from '../shared/author-name.service';
+import { BookService } from './book.service';
+import { SharedModule } from '../shared/shared.module';
+import { AuthorModule } from '../author/author.module';
 
+// Other half of the deliberate cycle — see author.module.ts for the exercise.
 @Module({
-  // WRONG: AuthorNameService re-declared here (second copy), PrismaService too.
-  providers: [BookResolver, PrismaService, AuthorNameService],
-  // WRONG: exporting the resolver again.
-  exports: [BookResolver],
+  providers: [BookResolver, BookService],
+  imports: [SharedModule],
+  exports: [BookService],
 })
 export class BookModule {}
