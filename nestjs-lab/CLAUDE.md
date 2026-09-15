@@ -228,3 +228,42 @@ _(plain-words concepts that stuck; written for a cold reader)_
   feature module can't close a loop. Watch `SharedModule` for grab-bag rot — the
   moment it holds two unrelated concerns, split it (that's why Prisma got its own
   module).
+
+### Event-loop ordering (Phase 0, for the DataLoader two-hop)
+
+- **The ordering is spec, not logic — memorize it.** You cannot derive that
+  `nextTick` beats promises from first principles. The rule: after each chunk of
+  sync code, the runtime drains the **nextTick queue** fully, then the
+  **microtask queue** fully, looping until *both* are empty, then takes **one**
+  macrotask (`setTimeout`), and repeats. Shape: sync → all ticks → all micros →
+  one timer → loop.
+- **`.then` / `await` / `queueMicrotask` are the SAME queue** (the microtask
+  queue), draining FIFO by registration. `process.nextTick` is a *separate*,
+  higher-priority queue. So it's three levels, not four.
+- **Rule (b) — the engine of the two-hop:** a `nextTick` scheduled from *inside*
+  a microtask does **not** preempt; it waits until the microtask queue drains to
+  **empty**, then fires on the checkpoint's next lap. Verified with a 6-liner:
+  `.then(() => { log('m1'); nextTick(() => log('tick')) }); .then(() => log('m2'))`
+  prints `m1, m2, tick` — not `m1, tick, m2`.
+- **Chain vs fan-out.** `p = p.then(cb)` (reassigning `p`) builds a *chain*:
+  `cbN` is registered on `cb(N-1)`'s result-promise, so only ONE continuation is
+  queued at a time and they arrive **staggered**, one tick apart. `keys.forEach(k
+  => p.then(...))` (not reassigning) *fans out* — all queued at once. `03`
+  staggers precisely because of the reassignment; that models how graphql resolves
+  level-2 (`product`) inside each level-1 row's continuation.
+- **Why two hops.** `Promise.resolve().then(() => process.nextTick(flush))`.
+  Hop 1 (`.then`) puts you inside a microtask; hop 2 (`nextTick`, by rule (b))
+  defers `flush` until the microtask queue is empty — so staggered/nested
+  `load()` keys that don't even exist yet when flush is scheduled still land in
+  the batch. One-hop (`.then(flush)`) makes flush a plain microtask that fires
+  mid-cascade → splits into N batches. **Same ordering, opposite outcome:** the
+  second hop turns "flush scheduled early" from a bug into a no-op, because a
+  nextTick only *parks* the flush; it can't run until the micros are gone.
+- **Ordering inside a settling continuation (open thread — start here next):**
+  when `then1` runs `load()`, the `schedule()` call enqueues the hop-1 microtask
+  `H` *during the body*; the next chain link `then2` is enqueued by the **runtime
+  at settlement**, *after* the body returns. So the queue is `[H, then2]`, not
+  `[then2, H]`. The unresolved confusion to tackle: "body produces `H`,
+  settlement (a runtime step after the body) produces `then2` — same tick, two
+  different agents doing the queuing." i.e. exactly *how/when* the promise
+  machinery enqueues the next `.then` continuation once a callback returns.
