@@ -27,8 +27,17 @@ Each maps to one lesson (button 1–9 in the UI).
 4. **[done] Teardown** — the returned cleanup runs on unsubscribe / complete / error.
 5. **[ ] Cold** — every subscriber re-runs the recipe from scratch.
 6. **[ ] Subject is hot** — one source, shared to all subscribers at once.
-7. **[ ] debounceTime** — discard intermediate values in a quiet window.
-8. **[ ] switchMap vs mergeMap vs concatMap** — cancel / parallel / queue.
+7. **[done] debounceTime** — discard intermediate values in a quiet window.
+   Chose reading B: on source complete, let the pending timer run its full
+   window and deliver its value, then complete (RxJS flushes immediately —
+   reading A). Requires a "completion owed" flag; error still tears through.
+8. **[done] switchMap vs mergeMap vs concatMap** — cancel / parallel / queue.
+   All three rebuilt cold, async-correct. Completion is an AND: source done
+   *and* no work remaining (switch: current inner done; merge: list empty;
+   concat: queue empty *and* active null). Sync-inner hardening done for switch
+   and merge (per-value flag, skip/undo the clobber); left out of concat on
+   purpose — `doNext` recurses, so the switch/merge post-check stomps live
+   state a nested call set. Concat inners are async in this lab, so it's moot.
 9. **[ ] The Apollo link** — swallow a 401, pipe the retry into the same observer.
 
 ## Failures
@@ -56,6 +65,18 @@ Each maps to one lesson (button 1–9 in the UI).
   o.complete();` — guard the emit and guard the completion separately. Handles
   both `take(0)` (emit nothing, complete) and `take(n)` (complete on the nth).
   Also emit the *value* `v`, not `count`/`n`.
+
+- **debounceTime reading B — stale timer id defeats the "pending?" check.**
+  (Took three passes to land.) *Symptom:* emit a value, let the window elapse,
+  then complete the source → never completes (hangs). *Cause:* `complete` decides
+  "is a timer pending?" from `if (id)`, but `id` was only nulled on reschedule and
+  in teardown — never when the timer *fires on its own*. A fired-but-not-cleared
+  `id` reads as "pending" forever, so `complete` sets the "completion owed" flag
+  and waits on a timer that already ran. Nulling it only *inside* the
+  `if (isComplete)` branch has the same hole (the plain fire path skips it).
+  *Fix:* null `id` inside the timer callback, **unconditionally**, right after the
+  emit and before the `isComplete` check — the timer stops being pending the
+  instant it fires, regardless of whether completion is owed.
 
 ## Learnings
 

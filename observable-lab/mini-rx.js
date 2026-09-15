@@ -9,45 +9,32 @@
    Rules of the game:
    - Type it, don't paste it.
    - Order this pass: (1) the engine — Obs, then Subject; (2) creation —
-     interval; (3) take. Get those cold, then move on to debounceTime,
-     then the three flatteners. The Apollo link (Lesson 9) is built
-     inline in the lab, not here — we rebuild it there when we arrive.
+     of, interval, timerOnce; (3) operators — map, filter, tap, take,
+     debounceTime; (4) the flatteners — switchMap, mergeMap, concatMap.
+     The Apollo link (Lesson 9) is built inline in the lab, not here.
    - Vocab check as you go: an *observable* holds a recipe and has
      .subscribe/.pipe; an *observer* is the {next,error,complete} object
      handed INTO a recipe.
-
-   Two failures already recorded in CLAUDE.md — don't relearn them the
-   hard way:
-   - subscribe: flip `closed` to true BEFORE notifying the caller, else a
-     reentrant unsubscribe double-fires teardown.
-   - take(n): two separate guards (emit vs complete), not one comparison.
+   - Stuck? The recurring bugs are logged in CLAUDE.md (Failures) — but
+     try to land it cold first; that's the whole point of this pass.
 ------------------------------------------------------------------- */
 
 /* === the engine ================================================== */
 
 export class Obs {
   constructor(subscribeFn) {
-    this._subscribeFn = subscribeFn;
+    this._subscribeFn = subscribeFn
   }
 
   subscribe(handler) {
-    const o = typeof handler === 'function' ? { next: handler} : handler || {};
+    const o = typeof handler === 'function' ? { next: handler } : handler || {};
     let closed = false;
-    let teardown = (() => {});
+    let teardown = (() => {})
 
     const observer = {
       next: (v) => {
-        if (!closed) {
-          o.next(v);
-        }
-      },
-      complete: () => {
-        if (!closed) {
-          closed = true;
-          if (o.complete) {
-            o.complete()
-          }
-          teardown();
+        if (!closed && o.next) {
+          o.next(v)
         }
       },
       error: (e) => {
@@ -58,13 +45,23 @@ export class Obs {
           }
           teardown();
         }
-      }
+      },
+      complete: () => {
+        if (!closed) {
+          closed = true;
+          if (o.complete) {
+            o.complete();
+          }
+          teardown();
+        }
+      },
     }
-    teardown = this._subscribeFn(observer) || (() => {});
+
+    teardown = this._subscribeFn(observer) || (() => {})
     return {
       unsubscribe: () => {
         if (!closed) {
-          closed = true
+          closed = true;
           teardown();
         }
       }
@@ -72,7 +69,7 @@ export class Obs {
   }
 
   pipe(...ops) {
-    return ops.reduce((src, trg) => { return trg(src) }, this)
+    return ops.reduce((src, op) => { return op(src) }, this)
   }
 }
 
@@ -88,25 +85,26 @@ export class Subject extends Obs {
   }
 
   next(v) {
-    this._observers.slice().forEach(observer => {
-      observer.next(v)
-    })
+    this._observers.slice().forEach(obs => obs.next(v))
   }
 }
 
 /* === creation ==================================================== */
 
-// emit each argument synchronously, then complete.
 export const of = (...vals) => {
-  // TODO(mau)
+  return new Obs((observer) => {
+    vals.forEach((v) => {
+      observer.next(v) // what would happen if it asynchronous, could observe.complete() run before next
+    })
+    observer.complete()
+  })
 };
 
-// emit 0,1,2,... every `ms`. teardown clears the interval.
 export const interval = (ms) => {
   return new Obs((observer) => {
-    let n = 0;
+    let count = 0;
     const id = setInterval(() => {
-      observer.next(n++)
+      observer.next(count++)
     }, ms)
     return () => {
       clearInterval(id)
@@ -114,25 +112,78 @@ export const interval = (ms) => {
   })
 };
 
-// emit `value` once after `ms`, then complete. teardown clears the timeout.
 export const timerOnce = (ms, value) => {
-  // TODO(mau)
+  return new Obs((observer) => {
+    const id = setTimeout(() => {
+      observer.next(value)
+      observer.complete()
+    }, ms)
+    return () => {
+      clearTimeout(id)
+    }
+  })
 };
 
 /* === operators (each: (args) => (src) => new Obs) ================ */
-// Reminder: an operator is a middleman. Its recipe subscribes DOWN to
-// `src` and forwards UP through the observer it was given (`o`).
 
 export const map = (fn) => (src) => {
-  // TODO(mau): forward fn(v) upward; pass error/complete straight through.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        observer.next(fn(v))
+      },
+      complete: () => {
+        observer.complete()
+      },
+      error: (e) => {
+        observer.error(e)
+      }
+    })
+    return () => {
+      sub.unsubscribe()
+    }
+  })
 };
 
 export const filter = (pred) => (src) => {
-  // TODO(mau): forward v only when pred(v) is true.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        if (pred(v)) {
+          observer.next(v)
+        }
+      },
+      complete: () => {
+        observer.complete()
+      },
+      error: (e) => {
+        observer.error(e)
+      }
+    })
+    return () => {
+      sub.unsubscribe()
+    }
+  })
 };
 
 export const tap = (fn) => (src) => {
-  // TODO(mau): run fn(v) for its side effect, then forward v unchanged.
+  return new Obs((observer) => {
+    const sub = src.subscribe({
+      next: (v) => {
+        fn(v)
+        observer.next(v)
+      },
+      complete: () => {
+        observer.complete()
+      },
+      error: (e) => {
+        observer.error(e)
+      }
+    })
+    return () => {
+      sub.unsubscribe()
+    }
+  })
 };
 
 export const take = (n) => (src) => {
@@ -140,19 +191,19 @@ export const take = (n) => (src) => {
     let count = 0;
     const sub = src.subscribe({
       next: (v) => {
-        if (count < n) {
-          observer.next(v);
-          count++
-        }
-        if (count >= n) {
-          observer.complete();
-        }
-      },
-      error: (e) => {
-        observer.error(e)
+          if (count < n) {
+            observer.next(v)
+            count++
+          }
+          if (count >= n) {
+            observer.complete()
+          }
       },
       complete: () => {
         observer.complete()
+      },
+      error: (e) => {
+        observer.error(e)
       }
     })
     return () => {
@@ -163,30 +214,37 @@ export const take = (n) => (src) => {
 
 export const debounceTime = (ms) => (src) => {
   return new Obs((observer) => {
-    let timerId = null;
-    let lastValue = null;
+    let id = null;
+    let isComplete = false;
     const sub = src.subscribe({
       next: (v) => {
-        lastValue = v;
-        if (!timerId) {
-          timerId = setTimeout(() => {
-            observer.next(lastValue)
-            timerId = null
-          }, ms)
+        if (id) {
+          clearTimeout(id)
         }
+        id = setTimeout(() => {
+          observer.next(v)
+          id = null;
+          if (isComplete) {
+            observer.complete()
+            isComplete = false
+          }
+        }, ms)
       },
       complete: () => {
-        timerId = null;
-        observer.complete()
+        if (id) {
+          isComplete = true
+        } else {
+          observer.complete()
+        }
+
       },
       error: (e) => {
-        timerId = null;
         observer.error(e)
       }
     })
     return () => {
-      sub.unsubscribe()
-      timerId = null;
+      clearTimeout(id)
+      sub.unsubscribe();
     }
   })
 };
@@ -194,15 +252,148 @@ export const debounceTime = (ms) => (src) => {
 /* --- the three flatteners (lesson 8) ---------------------------- */
 
 export const switchMap = (project) => (src) => {
-  // TODO(mau): on each source value, unsubscribe the previous inner and
-  // subscribe project(v). (cancels the old one)
+  return new Obs((observer) => {
+    let projectSub = null;
+    let isSrcClosed = false;
+    const sub = src.subscribe({
+      next: (v) => {
+        let projectComplete = false;
+        if (projectSub) {
+          projectSub.unsubscribe()
+        }
+        projectSub = project(v).subscribe({
+          next: (w) => {
+            observer.next(w)
+          },
+          complete: () => {
+            projectSub = null;
+            if (isSrcClosed) {
+              observer.complete()
+            }
+            projectComplete = true
+          },
+          error: (e) => {
+            observer.error(e)
+          }
+        })
+
+        if (projectComplete) {
+          projectSub = null;
+        }
+      },
+      complete: () => {
+        if (!projectSub) {
+          observer.complete()
+        }
+        isSrcClosed = true
+      },
+      error: (e) => {
+        observer.error(e)
+      }
+    })
+    return () => {
+      if (projectSub) {
+        projectSub.unsubscribe()
+      }
+      sub.unsubscribe()
+    }
+  })
 };
 
 export const mergeMap = (project) => (src) => {
-  // TODO(mau): subscribe project(v) for every source value; keep them all.
+  return new Obs((observer) => {
+    let current = []; // I named it current for current observers
+    let isSrcClosed = false;
+    const clearCurrent = () => {
+      current.forEach((curr) => curr.unsubscribe())
+    }
+    const sub = src.subscribe({
+      next: (v) => {
+        let syncComplete = false;
+        let projectSub;
+        projectSub = project(v).subscribe({
+          next: (w) => {
+            observer.next(w)
+          },
+          complete: () => {
+            syncComplete = true;
+            current = current.filter(curr => curr !== projectSub) //on sync is no ops, since its undefined and current just represnets the same array after the filtering
+            if (isSrcClosed && current.length === 0) {
+              observer.complete()
+            }
+          },
+          error: (e) => {
+            observer.error(e);
+          }
+        })
+        if (!syncComplete) {
+          current.push(projectSub)
+        }
+
+      },
+      complete: () => {
+        isSrcClosed = true;
+        if (current.length === 0) {
+          observer.complete()
+        }
+      },
+      error: (e) => {
+        clearCurrent()
+        observer.error(e)
+      }
+    })
+
+    return () => {
+      clearCurrent()
+      sub.unsubscribe()
+    }
+  })
 };
 
 export const concatMap = (project) => (src) => {
-  // TODO(mau): queue source values; run one inner at a time, next starts
-  // only when the current inner completes.
+  return new Obs((observer) => {
+    let queue = []
+    let active = null;
+    let isSrcClosed = false;
+    const doNext = () => {
+      if (isSrcClosed && queue.length === 0 && active === null) { observer.complete() }
+      if (queue.length === 0 || active !== null) { return }
+      active = project(queue.shift()).subscribe({
+        next: (w) => {
+          observer.next(w);
+        },
+        complete: () => {
+          active = null;
+          doNext();
+        },
+        error: (e) => {
+          observer.error(e)
+        }
+      })
+    }
+
+    const sub = src.subscribe({
+      next: (v) => {
+        queue.push(v);
+        doNext();
+      },
+      complete: () => {
+        isSrcClosed = true;
+        if (queue.length === 0 && active === null) {
+          observer.complete()
+        }
+      },
+      error: (e) => {
+        observer.error(e)
+      }
+    })
+
+    return () => {
+      if (active) {
+        active.unsubscribe();
+      }
+      sub.unsubscribe()
+    }
+
+  })
 };
