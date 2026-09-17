@@ -326,16 +326,35 @@ _(plain-words concepts that stuck; written for a cold reader)_
   per-level shape. The two-hop is DataLoader's **defensive default** that also
   covers the chained case; `03`'s "this is how graphql resolves level-2" framing
   is the part to re-examine against `04`'s output.
-- **OPEN (pick up next session) — pick→cont chaining order vs the level-2 flush.**
-  In `04`'s song, the level-1 picks (`pick_a/pick_b/pick_c`, enqueued together
-  when the level-1 batch settles) each resolve a per-key promise `R`, which
-  enqueues that key's cont (`cont_a/cont_b/cont_c`); the level-2 `load()`s fire
-  *inside* those conts. Still unclear to me: the exact interleave between the
-  chained pairs `pick_a → cont_a`, `pick_b → cont_b`, `pick_c → cont_c` and the
-  level-2 loader's `nextTick` flush — i.e. do all three level-2 loads land in ONE
-  level-2 batch, and *why*, given picks/conts arrive as chained pairs rather than
-  "all picks, then all conts". Walk this through against `04`'s actual output next
-  session.
+- **Callbacks ENQUEUE, they don't recurse — a whole generation drains before the
+  next → breadth-first. (Level-1 half of the OPEN thread, RESOLVED.)** When the
+  level-1 gate settles it enqueues all three picks together:
+  `MQ = [pick_a1, pick_a2, pick_a3]`. Running `pick_a1` does **not** dive into
+  `cont_a1` — resolving a promise *appends* its registered callback to the back
+  of MQ, so `cont_a1` lands **behind** the still-queued `pick_a2/pick_a3`:
+  `[pick_a2, pick_a3, cont_a1]` → `[pick_a3, cont_a1, cont_a2]` →
+  `[cont_a1, cont_a2, cont_a3]`. The whole picks generation drains, THEN the conts
+  run consecutively. That breadth-first order is why a graphql level resolves
+  sibling-parallel, which is why every sibling `load()` shares one batch. The
+  intuition it kills: it is NOT depth-first — `pick_a1` settling does not run
+  `cont_a1`'s entire subtree before `pick_a2`. (This was the confusion that had
+  persisted across sessions; the giveaway is that the queue is non-empty —
+  `[pick_a2, pick_a3]` still there — the moment `pick_a1` settles.)
+- **OPEN (resume here, on the other machine) — level 2 + the one-vs-two-hop
+  finale.** Parked mid level-1 pick-drain at `MQ = [pick_a2, pick_a3, cont_a1]`.
+  Predict FIRST, then run — don't read the answer into existence:
+  1. `cont_a1` fires `reviews.load(b1/b2)`; the first load schedules the reviews
+     window (`hop1_reviews` under two-hop). Where does that callback land relative
+     to `cont_a2`/`cont_a3`?
+  2. So do `cont_a2`/`cont_a3` fire their `load(b3..b6)` before or after the
+     reviews flush — how many keys end up in the reviews batch, and how many
+     reviews/books batches under `two`?
+  3. Finale: under `one`, `flush_reviews` enqueues directly to MQ (no nextTick)
+     during `cont_a1`. Ahead of or behind `cont_a2`/`cont_a3`? So does `one`
+     differ from `two` here — is the second hop a NO-OP for the per-level sibling
+     shape, and which shape (`02`/`03`) actually needs it?
+
+  Confirm with `node sandbox/04-graphql-execution.js two` then `... one`.
 
 ### Request-scoped loaders — lifetime & keying (Phase 2, sandbox 06)
 

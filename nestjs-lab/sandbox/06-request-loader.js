@@ -52,26 +52,24 @@ function createBatchLoader(batchFn) {
       scheduled = new Promise((resolve, reject) => {
         Promise.resolve().then(() => {
           process.nextTick(() => {
-            scheduled = null;
             const keys = queue;
-            queue = []
-            batchFn(keys).then(resolve, reject)
+            queue = [];
+            scheduled = null;
+            batchFn(keys).then((values) => resolve(values), (error) => reject(error))
           })
         })
       })
     }
-
     return scheduled;
   }
-
   return {
     load: (key) => {
-      const cached = cache.get(key)
-      if (cached) { return cached; }
+      const cached = cache.get(key);
+      if (cached) return cached;
       queue.push(key)
-      const result = schedule().then(values => values.get(key))
-      cache.set(key, result)
-      return result
+      const result = schedule().then((values) => values.get(key));
+      cache.set(key, result);
+      return result;
     }
   }
 }
@@ -82,11 +80,10 @@ function getRequestLoader(context, name, create) {
     context.loaders = new Map();
   }
   const loaders = context.loaders;
-  const existing = loaders.get(name)
-  if (existing) { return existing; }
-  const loader = create();
-  loaders.set(name, loader);
-  return loader;
+  if (!loaders.has(name)) {
+    loaders.set(name, create());
+  }
+  return loaders.get(name);
 }
 
 // ── SCAFFOLD BELOW — do not change ───────────────────────────────────────────
