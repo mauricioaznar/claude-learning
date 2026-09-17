@@ -189,6 +189,19 @@ _(symptom → cause → fix; recorded as they happen)_
   logic into `BookCountService`. Cause: added it to `SharedModule` `providers`
   but not `exports` — importers can't see a provider that isn't exported. Fix:
   add it to `exports`. (Same rule that Phase 4's core wiring turns on.)
+- **Rebuilt loader (`05`): nulled `schedule` instead of `scheduled`.** Symptom:
+  a loader that already flushed once threw `TypeError: schedule is not a function`
+  (and never re-batched) on a second window. Cause: the flush reset `schedule`
+  (the function `load()` calls) instead of `scheduled` (the promise the gate
+  `if (!scheduled)` checks) — two bindings one letter apart. Fix: null `scheduled`
+  (the thing the gate reads); `schedule` goes back to `const`. Classic: survives
+  every passing test, bites in prod.
+- **Green test suite that never tested the fix.** Symptom: all four rebuild
+  scenarios printed PASS with the reset bug still in the code. Cause: each scenario
+  used a fresh loader and a single flush window, so none exercised the gate
+  *reopening* — the exact thing the reset governs. Fix: added scenario E (one
+  loader, two windows). Lesson: a passing suite only proves what it exercises;
+  "all pass" is not "correct".
 
 ## Learnings
 
@@ -259,11 +272,47 @@ _(plain-words concepts that stuck; written for a cold reader)_
   mid-cascade → splits into N batches. **Same ordering, opposite outcome:** the
   second hop turns "flush scheduled early" from a bug into a no-op, because a
   nextTick only *parks* the flush; it can't run until the micros are gone.
-- **Ordering inside a settling continuation (open thread — start here next):**
-  when `then1` runs `load()`, the `schedule()` call enqueues the hop-1 microtask
-  `H` *during the body*; the next chain link `then2` is enqueued by the **runtime
-  at settlement**, *after* the body returns. So the queue is `[H, then2]`, not
-  `[then2, H]`. The unresolved confusion to tackle: "body produces `H`,
-  settlement (a runtime step after the body) produces `then2` — same tick, two
-  different agents doing the queuing." i.e. exactly *how/when* the promise
-  machinery enqueues the next `.then` continuation once a callback returns.
+- **Ordering inside a settling continuation (RESOLVED — was the `[H, then2]`
+  thread).** When a `.then` callback runs, two different agents enqueue, in this
+  order: (a) the **callback body** enqueues `H` (e.g. `schedule()` doing
+  `Promise.resolve().then(hop)`) *while it executes*; (b) **the runtime, at the
+  moment the callback returns**, settles the callback's result-promise, and that
+  settlement enqueues the next chain link `then2`. Body first, settlement second
+  → queue is `[H, then2]`. Confirmed by step-through: in `04`, `loadA`'s body
+  enqueues `hop1`, then `loadA` returning settles `p1` which enqueues `loadB` →
+  `[hop1, loadB]`.
+
+### The loader "song" + when two-hop actually matters (Phase 0, sandbox 04)
+
+- **Every loader level is the SAME 5-beat song; memorize it, don't re-trace.**
+  (1) `load(key)` pushes to `queue`, first call only enqueues `hop`. (2) `hop` →
+  `process.nextTick(flush)`. (3) `flush` (after MQ empties) → `batchFn` → enqueues
+  `j`. (4) `j` → `resolve(map)` settles the batch promise → enqueues the **picks**
+  (`schedule().then(v => v.get(key))`, one per key). (5) picks resolve each per-key
+  promise `R` → enqueue the **conts** (the resolver's `booksPromise.then(...)`).
+- **The only link between levels: beat 5 contains the next level's beat 1.** A
+  level-1 `cont` (e.g. `cont_a1`) is where the level-2 `load()`s fire. The `cont`s
+  are enqueued by the level-1 picks; inside each cont the next loader's `load`
+  runs. Nothing else connects the loops — each is self-similar.
+- **A promise is NEVER "enqueued"; only callbacks are.** Creating or settling a
+  promise doesn't put *it* in a queue — settling puts its registered `.then`
+  callbacks in the queue. The only things ever in the microtask queue are
+  callbacks (`hop`, `j`, `pick`, `cont`), never the promises (`scheduled`, the
+  `batchFn` result, `R`). "Registered on a pending promise" ≠ "enqueued"; it
+  enqueues only when that promise settles.
+- **Correction to the earlier "one-hop splits into N batches" claim — needs a
+  run of `04` to confirm.** Reasoning through `04` (real two-hop loader driven by
+  a graphql-shaped executor, `{ authors { books { reviews } } }`): graphql's
+  per-level resolution is **sibling-parallel** — all same-level continuations
+  (`cont_a1/a2/a3`) are enqueued *together* (they share one parent batch), so they
+  sit in the queue *ahead of* the flush that the first one schedules. Result: every
+  same-level `load` joins one batch **under one-hop AND two-hop alike**. Predicted:
+  `books=1, reviews=1` for both `node sandbox/04-graphql-execution.js one` and
+  `... two`. If so, plain resolveField-per-level does NOT need the second hop.
+- **So when DOES one-hop split?** Only when a `load` runs in a continuation
+  **enqueued *after* the flush** — i.e. genuinely *chained* loads (a deeper load
+  born from an earlier load's continuation), which is what `02` (nested) and `03`
+  (`p = p.then`) model. That's a user-code-chaining shape, not the sibling-parallel
+  per-level shape. The two-hop is DataLoader's **defensive default** that also
+  covers the chained case; `03`'s "this is how graphql resolves level-2" framing
+  is the part to re-examine against `04`'s output.
