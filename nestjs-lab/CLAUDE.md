@@ -326,6 +326,16 @@ _(plain-words concepts that stuck; written for a cold reader)_
   per-level shape. The two-hop is DataLoader's **defensive default** that also
   covers the chained case; `03`'s "this is how graphql resolves level-2" framing
   is the part to re-examine against `04`'s output.
+- **OPEN (pick up next session) — pick→cont chaining order vs the level-2 flush.**
+  In `04`'s song, the level-1 picks (`pick_a/pick_b/pick_c`, enqueued together
+  when the level-1 batch settles) each resolve a per-key promise `R`, which
+  enqueues that key's cont (`cont_a/cont_b/cont_c`); the level-2 `load()`s fire
+  *inside* those conts. Still unclear to me: the exact interleave between the
+  chained pairs `pick_a → cont_a`, `pick_b → cont_b`, `pick_c → cont_c` and the
+  level-2 loader's `nextTick` flush — i.e. do all three level-2 loads land in ONE
+  level-2 batch, and *why*, given picks/conts arrive as chained pairs rather than
+  "all picks, then all conts". Walk this through against `04`'s actual output next
+  session.
 
 ### Request-scoped loaders — lifetime & keying (Phase 2, sandbox 06)
 
