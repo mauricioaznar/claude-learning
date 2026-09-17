@@ -25,7 +25,7 @@
 
 // ── YOU WRITE THIS ───────────────────────────────────────────────────────────
 function createBatchLoader(batchFn) {
-  let cache = {}
+  let cache = new Map()
   let queue = []
   let scheduled = null; // promise which all row items will wait for settling.
 
@@ -49,13 +49,13 @@ function createBatchLoader(batchFn) {
 
   return {
     load: (key) => {
-      if (cache[key]) {
-        return cache[key]
+      if (cache.get(key)) {
+        return cache.get(key)
       }
       queue.push(key)
       const result = schedule().then(values => values.get(key))
-      cache[key] = result
-      return cache[key]
+      cache.set(key, result)
+      return cache.get(key)
     }
   }
 

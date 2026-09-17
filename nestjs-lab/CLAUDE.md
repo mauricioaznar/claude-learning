@@ -132,6 +132,16 @@ GraphQL context, the `audit.user` name-collapse (`created_by` + `updated_by` →
 query), and how/whether the same idea applies to the summary queries. See
 `docs/features/archived/feature-nestjs-resolvefield-loaders.md`.
 
+_Sandbox rebuild progress (ahead of wiring into Nest resolvers):_
+- `sandbox/05-rebuild-loader.js` ✅ — `createBatchLoader` from scratch (two-hop
+  scheduler, promise-cache dedup, gate reopen). Prod-faithful.
+- `sandbox/06-request-loader.js` ✅ — `getRequestLoader` + a from-memory rebuild
+  of `createBatchLoader`. Scenarios prove memoize-by-name, isolate-by-name,
+  per-request lifetime (the stale-leak test), and the deliberate audit-user
+  name-share. Prod parity for both.
+- Still open in Phase 2: the `toOne`/`toMany`/`groupByKey` wrappers, then wiring
+  the loader onto a real Nest GraphQL context + resolvers and counting the drop.
+
 ### Phase 3 — transactions ⬜ (Mau writes the fix)
 
 Make `createBookWithReviews` throw on the 3rd review; see the orphaned book. Wrap
@@ -316,3 +326,33 @@ _(plain-words concepts that stuck; written for a cold reader)_
   per-level shape. The two-hop is DataLoader's **defensive default** that also
   covers the chained case; `03`'s "this is how graphql resolves level-2" framing
   is the part to re-examine against `04`'s output.
+
+### Request-scoped loaders — lifetime & keying (Phase 2, sandbox 06)
+
+- **A loader must die with the request; that's the ONLY reason it lives on the
+  context.** It caches, and Nest resolvers are singletons — a loader stored on a
+  resolver would hand every later request the first request's cached rows. The
+  per-request GraphQL context is a fresh object each request, so parking loaders
+  under `context.loaders` gives them exactly the request's lifetime, no more.
+  `06`'s scenario C is the proof: bump the data version between two requests
+  (`ctx1`, `ctx2`); a loader that leaked would return the stale version. Losing
+  this is invisible in a single-request test — same trap species as `05`'s
+  scenario E (a green suite only proves what it exercises).
+- **`getRequestLoader(context, name, create)` is the whole story: lazy-init
+  `context.loaders`, memoize by `name`, `create()` at most once per name.** The
+  early-return shape (`const existing = m.get(name); if (existing) return existing;
+  … set … return loader`) does presence-check + return in one lookup — cleaner
+  than a truthiness guard that re-`get`s. `.has(name)` is the intent-exact check
+  ("is it present?"); truthiness is safe here only because loaders are always
+  objects, and prod uses truthiness too.
+- **`name` is the isolation key AND the deliberate-sharing key.** Unique per
+  `type.field` (`'Book.author'`) → isolated cache; the same key under two names
+  does NOT dedup (they're different loaders). Reuse one name across fields on
+  purpose (`'audit.user'` for `created_by` + `updated_by`) → shared loader → both
+  collapse into one query. Same mechanism, opposite intent — a bug by accident, a
+  feature when chosen.
+- **Cache the PROMISE, not the resolved value.** `createBatchLoader` stores what
+  `schedule().then(pick)` returns, so a key that resolves to `undefined` (a
+  MISSING row) still dedups — the cached promise is truthy even though its value
+  isn't. Cache the value instead and every missing key re-batches forever. (Also
+  why rejections stay cached: one poison key fails its whole batch for the request.)
