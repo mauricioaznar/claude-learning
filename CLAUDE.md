@@ -15,7 +15,7 @@ that Mau can rebuild each feature unaided later.
 | `observable-lab/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–4, 7–8 done; next — Lessons 5–6 (cold / Subject hot), then 9 (Apollo link) |
 | `nestjs-auth-lab/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |
 | `perf-lab/` | Full-stack NestJS + React/Apollo: slow report queries + indexing (back), cache policies + re-renders (front) | Planned — not scaffolded |
-| `async-lab/` | Promises/async internals from scratch — debouncing (trailing-edge timers), React render batching, request coalescing/dedup; built on the same microtask + timer substrate as the nestjs-lab batch loader. Not yet needed in inopack; learning for depth | Planned — not scaffolded |
+| `async-lab/` | Promises/async internals from scratch — debouncing (trailing-edge timers), React render batching, request coalescing/dedup; built on the same microtask + timer substrate as the nestjs-lab batch loader. Not yet needed in inopack; learning for depth | Scaffolded — Ex 1–4 stubbed (debounce/batch/coalesce/dedup), pending Mau |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so
