@@ -75,6 +75,34 @@ in a separate project. The root conventions still stand for every other lab.
 
 **✅ Final** — repoint `.env` from MinIO to a real S3 bucket; no code change.
 
+### Express-only extension (post-reference, driven by Mau)
+
+7. **✅ Storage contract via factory + delete** (`express/` only) — refactor
+   `src/s3.js` from a bare exported `S3Client` singleton into a
+   `createS3Storage(config)` **factory** returning the contract
+   (`signUpload` / `headObject` / `getDownloadUrl` / `deleteObject`). The AWS SDK
+   now imports *only* in `src/s3.js` — the handlers speak the contract. Adds
+   `DELETE /uploads/:id` (file first, then row; `204` on success, `404` on
+   unknown id) and `repository.remove`. React client wired too: `deleteUpload(id)`
+   in `api.js` (no body to parse on 204) + a `confirm()`-gated Delete button per
+   row in `App.jsx`. Acceptance test:
+   `grep -rln 'from "@aws-sdk' src server.js` prints only `src/s3.js`.
+   *(NestJS module still on the singleton/inline shape — a future exercise mirrors
+   this there as a provider, the Nest-native form of the same factory.)*
+
+8. **⬜ Mirror the storage contract into NestJS** (`nestjs/`, do when reviewing
+   Nest) — the Nest module *already* has the factory (`s3.provider.ts` builds the
+   client via `useFactory` + `S3_CLIENT` token), so the creational lesson is
+   done. What it lacks is the **facade**: `uploads.service.ts` still imports
+   `@aws-sdk` and calls `createPresignedPost`/`HeadObjectCommand`/`getSignedUrl`
+   inline, so the SDK leaks into the service and there's no `delete`. To match
+   Express: add a `StorageService` (a provider wrapping the client, exposing
+   `signUpload`/`headObject`/`getDownloadUrl`/`deleteObject`), have `UploadsService`
+   depend on *that* instead of the raw client, add `DELETE /uploads/:id` +
+   `repo.remove`. Acceptance test (same idea, TS): `@aws-sdk` imports only in the
+   storage provider file. Not new learning vs. Ex 7 — it's the Nest-shaped repeat,
+   worth doing only when comparing the two frameworks side by side.
+
 ## Express vs NestJS — the same logic, two shapes
 
 The AWS SDK calls are byte-for-byte identical. Everything that differs is
@@ -134,6 +162,30 @@ seams are explicit and swappable.
   just serves the compiled SPA; in dev, Vite runs on :5173 and proxies only the
   API calls (`/uploads`) to the backend. The direct-to-storage upload isn't
   proxied — the browser POSTs to the absolute MinIO URL the backend returned.
+- **A facade's boundary is grep-checkable.** The storage contract is portable
+  exactly when the vendor SDK imports in one file and nowhere else. `grep -rln
+  'from "@aws-sdk' src server.js` returning only `src/s3.js` *is* the proof — not
+  a matter of taste. Portability comes from the **contract shape**, not from
+  factory-vs-singleton; the constructor choice only affects injection/testing.
+- **Factory ≠ swappability.** `createS3Storage` vs `createGcsStorage` are two
+  factories satisfying one contract (Strategy); you pick one at boot, not at
+  runtime. A singleton-with-exported-functions is *equally* swappable — change
+  which module you import. The factory's real wins are testing (inject a fake),
+  multiplicity (two buckets), and explicit deps.
+- **Presigned POST inverts the "rollback on failure" instinct.** For a
+  through-the-server upload you'd save the row, write the file, and delete the
+  row if the write fails. Here the server never touches the file, so it can't
+  observe the failure synchronously — the row is `pending`, the browser uploads
+  out-of-band, and `/complete` reconciles. Rollback becomes a *sweep*, not a
+  `catch`.
+- **Delete order = make the failure loud.** File first, then row. Row-first-then-
+  file-fails leaves a silent orphan (billed storage nothing references);
+  file-first-then-row-fails leaves a dangling row that announces itself on the
+  next read. Prefer the visible failure over the silent-costly one.
+- **Idempotency lives at two layers.** S3 `DeleteObject` is idempotent (success
+  on a missing key) — that's what makes retrying the delete safe. The *resource*
+  endpoint `DELETE /uploads/:id` is not, once the row is hard-deleted: a repeat
+  call is `404`. Full `204`-on-repeat would need a soft-delete tombstone.
 - **The upload logic isn't framework code.** `client/src/api.js` (sign → POST to
   storage → complete) is plain `fetch`, identical in the React and Svelte
   clients. Only the component layer (state, rendering) differs — which is exactly

@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 import express from "express";
-import { HeadObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { config } from "./src/config.js";
 import { repository } from "./src/repository.js";
-import { s3 } from "./src/s3.js";
+import { createS3Storage } from "./src/s3.js";
+
+// Build the storage adapter once, from config. From here on the handlers speak
+// only the contract (signUpload / headObject / getDownloadUrl / deleteObject) —
+// the vendor SDK is sealed inside src/s3.js and never imported here.
+const storage = createS3Storage(config.s3);
 
 const app = express();
 app.use(express.json());
@@ -53,20 +55,18 @@ app.post("/uploads", async (req, res) => {
 
   repository.create({ id, key, filename, contentType, size });
 
-  const { url, fields } = await createPresignedPost(s3, {
-    Bucket: config.s3.bucket,
-    Key: key,
-    Conditions: [
-      ["content-length-range", 1, config.maxFileSizeBytes],
-      ["eq", "$Content-Type", config.allowedContentType],
-    ],
-    Fields: { "Content-Type": config.allowedContentType },
-    Expires: config.uploadUrlTtlSeconds,
+  // Key generation stays here (it needs the id from the repository); the module
+  // is handed a key and stays storage-generic.
+  const upload = await storage.signUpload({
+    key,
+    contentType: config.allowedContentType,
+    maxBytes: config.maxFileSizeBytes,
+    expiresIn: config.uploadUrlTtlSeconds,
   });
 
   // `upload.url` + `upload.fields` are what the browser needs to POST the file
   // straight to storage (see public/app.js).
-  res.status(201).json({ id, key, upload: { url, fields } });
+  res.status(201).json({ id, key, upload });
 });
 
 // E4 — Complete + verify.
@@ -76,19 +76,13 @@ app.post("/uploads/:id/complete", async (req, res) => {
   const record = repository.getById(req.params.id);
   if (!record) return res.status(404).json({ error: "unknown upload" });
 
-  try {
-    const head = await s3.send(
-      new HeadObjectCommand({ Bucket: config.s3.bucket, Key: record.key })
-    );
-    if (head.ContentLength > config.maxFileSizeBytes) {
-      return res.status(413).json({ error: "stored object exceeds cap" });
-    }
-  } catch (err) {
-    if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
-      // Signed but never actually uploaded.
-      return res.status(409).json({ error: "object not found in storage" });
-    }
-    throw err;
+  const head = await storage.headObject(record.key);
+  if (!head) {
+    // Signed but never actually uploaded.
+    return res.status(409).json({ error: "object not found in storage" });
+  }
+  if (head.contentLength > config.maxFileSizeBytes) {
+    return res.status(413).json({ error: "stored object exceeds cap" });
   }
 
   res.json(repository.markUploaded(record.id));
@@ -102,17 +96,30 @@ app.get("/uploads/:id/url", async (req, res) => {
   const record = repository.getById(req.params.id);
   if (!record) return res.status(404).json({ error: "unknown upload" });
 
-  const url = await getSignedUrl(
-    s3,
-    new GetObjectCommand({
-      Bucket: config.s3.bucket,
-      Key: record.key,
-      ResponseContentDisposition: `attachment; filename="${record.filename}"`,
-    }),
-    { expiresIn: config.downloadUrlTtlSeconds }
-  );
+  const url = await storage.getDownloadUrl({
+    key: record.key,
+    filename: record.filename,
+    expiresIn: config.downloadUrlTtlSeconds,
+  });
 
   res.json({ url });
+});
+
+// E7 — Delete.
+// The row is our authority: no row means genuinely nothing to delete → 404.
+// Otherwise delete the *file first* (idempotent at S3), then the row. If the
+// storage delete throws, we bail before touching the row — the failure is
+// visible (a live row still points at the object) rather than a silent orphan.
+// Hard delete, so a repeat call finds no row and returns 404; full 204-on-repeat
+// idempotency would need a soft-delete tombstone, which this lab opted out of.
+app.delete("/uploads/:id", async (req, res) => {
+  const record = repository.getById(req.params.id);
+  if (!record) return res.status(404).json({ error: "unknown upload" });
+
+  await storage.deleteObject(record.key);
+  repository.remove(record.id);
+
+  res.status(204).end();
 });
 
 app.listen(config.port, () => {

@@ -45,3 +45,13 @@ export async function downloadUrl(id) {
   const { url } = await res.json();
   return url;
 }
+
+export async function deleteUpload(id) {
+  // Hard delete: server removes the object then the row, and replies 204 (no
+  // body — don't parse it). A repeat delete of an already-gone row is a 404.
+  const res = await fetch(`/uploads/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({}));
+    throw new Error(error ?? `Delete failed (${res.status})`);
+  }
+}

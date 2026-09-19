@@ -124,6 +124,10 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.link.danger {
+  color: #b91c1c;
+}
+
 .badge {
   font-size: 0.7rem;
   font-weight: 600;

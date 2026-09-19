@@ -14,6 +14,7 @@ const listStmt = db.prepare(`SELECT * FROM uploads ORDER BY created_at DESC`);
 const markUploadedStmt = db.prepare(`
   UPDATE uploads SET status = 'uploaded', completed_at = @completedAt WHERE id = @id
 `);
+const deleteStmt = db.prepare(`DELETE FROM uploads WHERE id = ?`);
 
 const toRecord = (row) =>
   row && {
@@ -51,5 +52,9 @@ export const repository = {
   markUploaded(id) {
     markUploadedStmt.run({ id, completedAt: Date.now() });
     return this.getById(id);
+  },
+
+  remove(id) {
+    deleteStmt.run(id);
   },
 };

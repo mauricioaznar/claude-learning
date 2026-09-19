@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { listUploads, uploadFile, downloadUrl } from "./api.js";
+import { listUploads, uploadFile, downloadUrl, deleteUpload } from "./api.js";
 
 const fmtSize = (b) =>
   b < 1024
@@ -42,6 +42,21 @@ export default function App() {
     window.open(await downloadUrl(id), "_blank");
   };
 
+  // Hard delete — confirm first (bytes are gone for good, no soft-delete here).
+  const onDelete = async (id, filename) => {
+    if (!window.confirm(`Delete "${filename}"? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      await deleteUpload(id);
+      setStatus("Deleted.");
+      refresh();
+    } catch (e) {
+      setStatus(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <main>
       <h1>
@@ -78,6 +93,13 @@ export default function App() {
                   Download
                 </button>
               )}
+              <button
+                className="link danger"
+                onClick={() => onDelete(r.id, r.filename)}
+                disabled={busy}
+              >
+                Delete
+              </button>
             </div>
           </li>
         ))}

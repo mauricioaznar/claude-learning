@@ -61,6 +61,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:3001/uploads \
 | `POST` | `/uploads` | validate + return a presigned POST |
 | `POST` | `/uploads/:id/complete` | HEAD-verify the object, mark uploaded |
 | `GET`  | `/uploads/:id/url` | presigned GET (download) |
+| `DELETE` | `/uploads/:id` | delete object then row (`204`; `404` if unknown) |
 
 ## Going to real AWS
 

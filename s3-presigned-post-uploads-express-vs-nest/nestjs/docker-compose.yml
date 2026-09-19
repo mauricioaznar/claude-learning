@@ -25,7 +25,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot: create the `uploads` bucket, then exit.
+  # One-shot: create the `inopack-s3lab-uploads-dev` bucket, then exit.
   createbucket:
     image: minio/mc
     depends_on:
@@ -33,7 +33,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
-      mc mb -p local/uploads;
+      mc mb -p local/inopack-s3lab-uploads-dev;
       exit 0;
       "
 
