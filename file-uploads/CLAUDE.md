@@ -53,8 +53,11 @@ Express-vs-Nest comparison live in `DESIGN.md`.
 
 ## Exercises
 
-Both modules are complete. (Originally an exercise path for Mau to write; on
-request the whole thing was implemented as a reference to recreate from scratch.)
+Both modules are complete. **This project was a deliberate exception to the repo
+conventions in the root `CLAUDE.md`** ("scaffold, don't implement" and "review
+statically; Mau runs the code"): at Mau's request the whole thing was implemented
+and verified by running it, to serve as a reference he'll recreate from scratch
+in a separate project. The root conventions still stand for every other lab.
 
 1. **Scaffold + config** — skeleton, `.env` loading, SQLite table + repository,
    demo page.
