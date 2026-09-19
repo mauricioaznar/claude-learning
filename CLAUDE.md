@@ -10,6 +10,7 @@ that Mau can rebuild each feature unaided later.
 | --- | --- | --- |
 | `cookies/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
 | `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; next — Ex 7 (optional: rotation + reuse detection) |
+| `file-uploads/` | S3 presigned uploads — Express+React vs NestJS+Svelte | Complete — both modules E1–E6 |
 | `nestjs-lab/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phases 1 & 4 done (wrong-way scaffold; DI conventions + circular-dep fixes); Phases 2–3 pending |
 | `observable-lab/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–4, 7–8 done; next — Lessons 5–6 (cold / Subject hot), then 9 (Apollo link) |
 | `nestjs-auth-lab/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |
