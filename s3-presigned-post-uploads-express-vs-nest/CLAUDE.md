@@ -59,21 +59,21 @@ statically; Mau runs the code"): at Mau's request the whole thing was implemente
 and verified by running it, to serve as a reference he'll recreate from scratch
 in a separate project. The root conventions still stand for every other lab.
 
-1. **Scaffold + config** — skeleton, `.env` loading, SQLite table + repository,
+1. **✅ Scaffold + config** — skeleton, `.env` loading, SQLite table + repository,
    demo page.
-2. **Sign an upload** — `POST /uploads` validates filename/type/size, returns a
+2. **✅ Sign an upload** — `POST /uploads` validates filename/type/size, returns a
    presigned POST with the size-cap policy. *The core step.*
-3. **Data plane** — demo page sends the file straight to storage via the
+3. **✅ Data plane** — demo page sends the file straight to storage via the
    returned form fields.
-4. **Complete + verify** — `POST /uploads/:id/complete` HEAD-checks the object
+4. **✅ Complete + verify** — `POST /uploads/:id/complete` HEAD-checks the object
    really exists, updates status. Closes the "signed but never uploaded" gap.
-5. **Download** — `GET /uploads/:id/url` returns a presigned GET URL.
-6. **Cost + hardening** — bucket CORS, lifecycle expiry, block public access;
+5. **✅ Download** — `GET /uploads/:id/url` returns a presigned GET URL.
+6. **✅ Cost + hardening** — bucket CORS, lifecycle expiry, block public access;
    prove the cap by pushing an oversized file (documented in each module's
    `README.md`;
    MinIO gives CORS for free in dev, real AWS needs the config there).
 
-**Final** — repoint `.env` from MinIO to a real S3 bucket; no code change.
+**✅ Final** — repoint `.env` from MinIO to a real S3 bucket; no code change.
 
 ## Express vs NestJS — the same logic, two shapes
 

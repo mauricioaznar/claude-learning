@@ -50,7 +50,7 @@ src/
 
 ## Exercises
 
-### Phase 0 — event-loop sandbox (prereq for Phase 2) 🔧
+### Phase 0 — event-loop sandbox (prereq for Phase 2) 🚧
 Two standalone `node` scripts in `sandbox/`, no Nest/Prisma, built to make the
 batch loader's scheduler readable instead of magic. **Predict the output, then
 run** — the answers below are for confirming, not reading first.

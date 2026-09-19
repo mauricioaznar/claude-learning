@@ -19,26 +19,26 @@ Run it: `npm --prefix observables-from-scratch-to-apollo-link run dev` → http:
 
 Each maps to one lesson (button 1–9 in the UI).
 
-1. **[done] Subscribing is what starts it** — an Observable is a stored recipe;
+1. **✅ Subscribing is what starts it** — an Observable is a stored recipe;
    `subscribe` invokes it, teardown is what invoking it returns.
-2. **[done] Many values over time** — the thing a Promise can't do; `take(n)` completes.
-3. **[done] map / filter** — each operator returns a *new* Observable subscribing to
+2. **✅ Many values over time** — the thing a Promise can't do; `take(n)` completes.
+3. **✅ map / filter** — each operator returns a *new* Observable subscribing to
    the previous one. Nothing is mutated.
-4. **[done] Teardown** — the returned cleanup runs on unsubscribe / complete / error.
-5. **[ ] Cold** — every subscriber re-runs the recipe from scratch.
-6. **[ ] Subject is hot** — one source, shared to all subscribers at once.
-7. **[done] debounceTime** — discard intermediate values in a quiet window.
+4. **✅ Teardown** — the returned cleanup runs on unsubscribe / complete / error.
+5. **⬜ Cold** — every subscriber re-runs the recipe from scratch.
+6. **⬜ Subject is hot** — one source, shared to all subscribers at once.
+7. **✅ debounceTime** — discard intermediate values in a quiet window.
    Chose reading B: on source complete, let the pending timer run its full
    window and deliver its value, then complete (RxJS flushes immediately —
    reading A). Requires a "completion owed" flag; error still tears through.
-8. **[done] switchMap vs mergeMap vs concatMap** — cancel / parallel / queue.
+8. **✅ switchMap vs mergeMap vs concatMap** — cancel / parallel / queue.
    All three rebuilt cold, async-correct. Completion is an AND: source done
    *and* no work remaining (switch: current inner done; merge: list empty;
    concat: queue empty *and* active null). Sync-inner hardening done for switch
    and merge (per-value flag, skip/undo the clobber); left out of concat on
    purpose — `doNext` recurses, so the switch/merge post-check stomps live
    state a nested call set. Concat inners are async in this lab, so it's moot.
-9. **[ ] The Apollo link** — swallow a 401, pipe the retry into the same observer.
+9. **⬜ The Apollo link** — swallow a 401, pipe the retry into the same observer.
 
 ## Failures
 

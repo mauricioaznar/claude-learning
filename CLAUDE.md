@@ -34,7 +34,10 @@ code**. Only start once the path is agreed.
 When starting a new side project, create `<project>/CLAUDE.md` with three sections:
 
 **Exercises** — numbered steps, each with a status marker and a one-line
-description of what it teaches. Mark them done as they pass.
+description of what it teaches. Mark them done as they pass. Use one marker set
+across every project: **✅ done**, **🚧 in progress**, **⬜ not started**.
+(GitHub-style `- [x]` / `- [ ]` checkboxes are fine for sub-tasks *within* an
+exercise — that's a separate device from the exercise's own status marker.)
 
 **Failures** — bugs actually hit while building, written as *symptom → cause →
 fix*. This is the most valuable section. Record them as they happen, not at the

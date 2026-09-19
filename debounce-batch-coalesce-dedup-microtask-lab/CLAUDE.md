@@ -32,16 +32,16 @@ Run it: `npm --prefix debounce-batch-coalesce-dedup-microtask-lab install` once,
 
 Each maps to one Run panel in the UI.
 
-1. **[ ] debounce(fn, wait)** — trailing-edge timer. Repeated calls reset the
+1. **⬜ debounce(fn, wait)** — trailing-edge timer. Repeated calls reset the
    window; `fn` runs once, `wait` ms after the calls go quiet, with the last
    call's args. *Time-based:* wait until the calls stop.
-2. **[ ] createBatcher(flush)** — collect every `schedule(item)` in one tick and
+2. **⬜ createBatcher(flush)** — collect every `schedule(item)` in one tick and
    call `flush(items)` exactly once on the next microtask. *Why a microtask, not
    a timer?* It flushes before the browser paints / the next task runs.
-3. **[ ] coalesce(fetcher)** — while a call for a key is in flight, every
+3. **⬜ coalesce(fetcher)** — while a call for a key is in flight, every
    `load(key)` returns the same promise (one real fetch for the burst). Clears on
    settle — including on reject. *Dedupe work in flight.*
-4. **[ ] dedup(fetcher)** — remember the resolved value per key; later calls skip
+4. **⬜ dedup(fetcher)** — remember the resolved value per key; later calls skip
    `fetcher`. The counterpart to coalesce (in-flight vs. already-done). The
    subtle fork the driver exposes: cache the **promise** (concurrent callers also
    dedupe) vs. cache only the **settled value** (a mid-flight burst still
