@@ -8,14 +8,14 @@ that Mau can rebuild each feature unaided later.
 
 | Project | Topic | Status |
 | --- | --- | --- |
-| `cookies/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
-| `cookie-labs-typescript/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; next — Ex 7 (optional: rotation + reuse detection) |
-| `file-uploads/` | S3 presigned uploads — Express+React vs NestJS+Svelte | Complete — both modules E1–E6 |
-| `nestjs-lab/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phases 1 & 4 done (wrong-way scaffold; DI conventions + circular-dep fixes); Phases 2–3 pending |
-| `observable-lab/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–4, 7–8 done; next — Lessons 5–6 (cold / Subject hot), then 9 (Apollo link) |
-| `nestjs-auth-lab/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |
-| `perf-lab/` | Full-stack NestJS + React/Apollo: slow report queries + indexing (back), cache policies + re-renders (front) | Planned — not scaffolded |
-| `async-lab/` | Promises/async internals from scratch — debouncing (trailing-edge timers), React render batching, request coalescing/dedup; built on the same microtask + timer substrate as the nestjs-lab batch loader. Not yet needed in inopack; learning for depth | Scaffolded — Ex 1–4 stubbed (debounce/batch/coalesce/dedup), pending Mau |
+| `express-cookie-session-sliding-absolute-expiry/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
+| `typescript-access-refresh-tokens-handrolled-jwt/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; next — Ex 7 (optional: rotation + reuse detection) |
+| `s3-presigned-post-uploads-express-vs-nest/` | S3 presigned uploads — Express+React vs NestJS+Svelte | Complete — both modules E1–E6 |
+| `nestjs-graphql-prisma-nplus1-transactions-di/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phases 1 & 4 done (wrong-way scaffold; DI conventions + circular-dep fixes); Phases 2–3 pending |
+| `observables-from-scratch-to-apollo-link/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–4, 7–8 done; next — Lessons 5–6 (cold / Subject hot), then 9 (Apollo link) |
+| `nestjs-outcome-routing-mfa-throttle-cors/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |
+| `nestjs-report-query-indexing-apollo-cache-perf/` | Full-stack NestJS + React/Apollo: slow report queries + indexing (back), cache policies + re-renders (front) | Planned — not scaffolded |
+| `debounce-batch-coalesce-dedup-microtask-lab/` | Promises/async internals from scratch — debouncing (trailing-edge timers), React render batching, request coalescing/dedup; built on the same microtask + timer substrate as the `nestjs-graphql-prisma-nplus1-transactions-di` batch loader. Not yet needed in inopack; learning for depth | Scaffolded — Ex 1–4 stubbed (debounce/batch/coalesce/dedup), pending Mau |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so

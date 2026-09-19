@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "cookies",
+      "name": "express-cookie-session-sliding-absolute-expiry",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "cookies"],
+      "runtimeArgs": ["run", "dev", "--prefix", "express-cookie-session-sliding-absolute-expiry"],
       "port": 3000
     }
   ]
