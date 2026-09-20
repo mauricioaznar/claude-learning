@@ -107,6 +107,31 @@ in a separate project. The root conventions still stand for every other lab.
    `storage.service.ts`. *(No declared interface, so this is a **facade**, not a
    port + adapter — see Learnings.)*
 
+9. **⬜ Extract a `StorageModule`** (`nestjs/`) — today `s3Provider` +
+   `StorageService` live in `UploadsModule.providers`, so the raw `S3_CLIENT`
+   token is injectable anywhere in that module (B's known encapsulation cost).
+   Move both into a dedicated `StorageModule` that **exports only
+   `StorageService`** (not the token); `UploadsModule` then `imports: [StorageModule]`
+   and drops `s3Provider`/`StorageService` from its own `providers`. Because a
+   provider escapes its module only if `exports`ed, `S3_CLIENT` becomes private to
+   `StorageModule` and the facade is the only door — recovering option A's
+   isolation while keeping B's token lesson inside the module. `s3.provider.ts` is
+   unchanged; it just moves which module lists it. Acceptance: `S3_CLIENT` importable
+   only within `storage/`, `UploadsModule` no longer names `s3Provider`, and Nest
+   still boots (the DI graph resolves across the module import). Teaches the
+   module-level `exports` boundary as the visibility control.
+
+   > **Note — the token can collapse into the constructor (option A).** Keeping the
+   > `S3_CLIENT` custom-token provider for now (it's the DI lesson), but
+   > `StorageService` could instead build the client in its own constructor from
+   > the injected global `ConfigService` — `this.client = new S3Client({ ... })` —
+   > deleting `s3.provider.ts` and the token entirely. Benefits: **correct typing**
+   > (no untyped token whose value type is unchecked) and **no string/symbol link**
+   > to keep in sync across `provide`/`@Inject`; the client also becomes a truly
+   > private field (airtight isolation, same goal as Ex 9). Cost: loses the in-code
+   > custom-token-provider demonstration and easy fake-`S3Client` injection in unit
+   > tests. Deferred deliberately, not forgotten.
+
 ## Express vs NestJS — the same logic, two shapes
 
 The AWS SDK calls are byte-for-byte identical. Everything that differs is
@@ -216,6 +241,23 @@ seams are explicit and swappable.
   not by holding their logic. Same shape as Express's `server.js` handlers
   coordinating the `storage` and `repository` objects; Nest just makes those
   injectables.
+- **Static vs. dynamic module — the trigger is import-time options, not
+  variability.** A *static* module (`@Module({...})`, like `UploadsModule`) has its
+  provider set fixed by the decorator, evaluated once at class load with no
+  arguments. A *dynamic* module exposes a static method (`forRoot`/`register`/
+  `forFeature`) that runs at bootstrap and returns a `DynamicModule` — the same
+  fields, but *computed* from options the importer passes. "Dynamic" describes how
+  the module is *assembled*, not that its data changes at runtime (env values are
+  read once and static). A module must be dynamic **only when it needs options
+  from the importing code at its import site** — e.g. `ConfigModule.forRoot({ load,
+  isGlobal })`, which `@nestjs/config` requires because it's a reusable library
+  that can't hardcode *your* config choices. Two ways a module can vary, only the
+  first forcing dynamic: (1) caller passes options in the import → dynamic;
+  (2) providers inject config from elsewhere (`ConfigService`) → stays static.
+  `UploadsModule` is the proof of (2): fully static, yet env-driven (MinIO vs real
+  AWS) because its providers inject `ConfigService`, not because anything is passed
+  to it. And `isGlobal: true` on `forRoot` is what exports `ConfigService` into
+  every module's context, so it injects anywhere without re-importing.
 - **The upload logic isn't framework code.** `client/src/api.js` (sign → POST to
   storage → complete) is plain `fetch`, identical in the React and Svelte
   clients. Only the component layer (state, rendering) differs — which is exactly
