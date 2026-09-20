@@ -78,6 +78,11 @@ does a `HEAD` on the object to prove it really landed (and is within the cap)
 before trusting the row. Without this, a client could get a signed URL and never
 upload, leaving a dangling `pending` row.
 
+This client-driven complete is the reference build's only completion signal, and
+it's the weak link — a browser that closes mid-flow never calls it. See §6 for
+how you'd harden this (S3 event callback as the primary signal, a sweep, staging
+lifecycle) when taking the pattern to production.
+
 ### 1.7 Cost decisions, in one place
 
 - **No bytes through the server** (§1.1) — the big one.
@@ -215,7 +220,44 @@ compiles the component to direct DOM updates — reactivity is just assignment, 
 almost nothing framework-shaped is left at runtime (hence the ~16× smaller
 bundle). Same three-step upload flow underneath either.
 
-## 6. Verification status
+## 6. Hardening the reconciliation (advisory — not built)
+
+*Everything in this section is guidance to weigh when taking the pattern to
+production, **not** rules the reference build follows. The lab's only completion
+signal is the client calling `/complete` (§1.6), and that's the weak link: a
+browser that uploads and then closes never reconciles, leaving a `pending` row
+and possibly an orphaned object. These four moves harden it, roughly in order of
+how much they buy you.*
+
+- **Row first, key minted server-side.** The server writes the `pending` row and
+  generates the key *before* handing back a signed URL (already true here, §1.5).
+  This is what keeps an orphaned object traceable: every key in the bucket maps
+  back to a row, so a leaked file is never anonymous — you can always find and
+  bill/delete it.
+- **S3 event callback becomes the primary signal.** Wire an S3 event
+  notification (`s3:ObjectCreated:*`) to the server (directly, or via a
+  queue/Lambda) and let *that* flip the row to `uploaded`. Once it exists, the
+  client's `/complete` call is optional — a convenience for snappy UI, not the
+  source of truth. The server learns the object landed even if the browser
+  vanished mid-flow.
+- **Sweep is the backstop.** A periodic job reconciles rows against the bucket:
+  `pending` rows older than the URL TTL with no object → mark failed/expire;
+  objects with no matching row → delete. It catches whatever the event callback
+  misses (dropped events, misconfig). Backstop, not the primary path.
+- **Staging prefix + lifecycle is the cost cap.** Sign uploads into a `staging/`
+  prefix carrying an aggressive lifecycle rule (expire after hours/days); on a
+  successful reconcile, move the object to its permanent prefix. Anything that
+  never reconciles ages out on its own — the cost ceiling when every other
+  mechanism has failed.
+
+*How they stack: the callback is the main completion path, the sweep backs it up,
+and the staging lifecycle caps cost when both miss. Today the build has only the
+client `/complete` and a plain lifecycle rule (§1.7); server-side key minting is
+already in place.*
+
+---
+
+## 7. Verification status
 
 Docker was not available on the build machine, so the live browser→MinIO upload
 and the `HEAD`-based complete step were **not** run end-to-end. Everything that
