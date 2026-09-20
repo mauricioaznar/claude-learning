@@ -90,18 +90,22 @@ in a separate project. The root conventions still stand for every other lab.
    *(NestJS module still on the singleton/inline shape — a future exercise mirrors
    this there as a provider, the Nest-native form of the same factory.)*
 
-8. **⬜ Mirror the storage contract into NestJS** (`nestjs/`, do when reviewing
-   Nest) — the Nest module *already* has the factory (`s3.provider.ts` builds the
-   client via `useFactory` + `S3_CLIENT` token), so the creational lesson is
-   done. What it lacks is the **facade**: `uploads.service.ts` still imports
-   `@aws-sdk` and calls `createPresignedPost`/`HeadObjectCommand`/`getSignedUrl`
-   inline, so the SDK leaks into the service and there's no `delete`. To match
-   Express: add a `StorageService` (a provider wrapping the client, exposing
-   `signUpload`/`headObject`/`getDownloadUrl`/`deleteObject`), have `UploadsService`
-   depend on *that* instead of the raw client, add `DELETE /uploads/:id` +
-   `repo.remove`. Acceptance test (same idea, TS): `@aws-sdk` imports only in the
-   storage provider file. Not new learning vs. Ex 7 — it's the Nest-shaped repeat,
-   worth doing only when comparing the two frameworks side by side.
+8. **✅ Mirror the storage contract into NestJS** (`nestjs/`) — added
+   `StorageService`, an `@Injectable()` **facade** that injects the `S3_CLIENT`
+   token + `ConfigService` and exposes the four verbs
+   (`signUpload`/`headObject`/`getDownloadUrl`/`deleteObject`). All `@aws-sdk`
+   command/presign imports moved out of `uploads.service.ts` into it, so the
+   service now depends on the facade by type and never sees the SDK. Added
+   `DELETE /uploads/:id` (`@HttpCode(204)`; file first via `storage.deleteObject`,
+   then `repo.remove`; `404` on unknown id) and `UploadsRepository.remove`. Svelte
+   client wired: `deleteUpload(id)` in `api.js` (no body on 204) + a
+   `confirm()`-gated Delete button per row. **Chose the "wrap the injected client"
+   shape (kept `s3.provider.ts`) over "facade owns its client" so the module keeps
+   *both* Nest DI styles visible** — the token/`useFactory` custom provider
+   (`S3_CLIENT`) and the ordinary class provider (`StorageService`). Acceptance
+   test: `grep -rln 'from "@aws-sdk' nestjs/src` prints only `s3.provider.ts` and
+   `storage.service.ts`. *(No declared interface, so this is a **facade**, not a
+   port + adapter — see Learnings.)*
 
 ## Express vs NestJS — the same logic, two shapes
 
@@ -186,6 +190,32 @@ seams are explicit and swappable.
   on a missing key) — that's what makes retrying the delete safe. The *resource*
   endpoint `DELETE /uploads/:id` is not, once the row is hard-deleted: a repeat
   call is `404`. Full `204`-on-repeat would need a soft-delete tombstone.
+- **Facade vs. adapter — the litmus is a declared target interface.** Both wrap a
+  messy vendor subsystem behind a smaller surface. *Adapter* exists to make the
+  vendor conform to a **target interface the client already programs against** (a
+  port); *facade* just invents a convenient surface with nothing forcing its
+  shape. `createS3Storage` / `StorageService` have no declared `interface`, so
+  they're **facades**. They'd become a real **port + adapter** the moment you add
+  `interface StoragePort` and `implements StoragePort` — at which point swapping
+  in `createGcsStorage` (Strategy, chosen at boot) is conformance, not convention.
+  A facade need not expose a single function; a smaller surface is the only
+  requirement.
+- **Two Nest DI styles, and when each is forced.** *Class provider* (ordinary):
+  your own `@Injectable()` class, registered by listing it, injected **by type**
+  (`private readonly repo: UploadsRepository`) — Nest reads the param's type from
+  TS metadata and `new`s it. *Token + `useFactory`* (the interesting one): needed
+  when the thing isn't a class you can decorate — a third-party class
+  (`S3Client`), a config value, or an interface-typed dep (interfaces vanish at
+  runtime, so they can't be a DI key). You invent a token (`S3_CLIENT`), write the
+  constructor yourself in `useFactory`, and inject with `@Inject(TOKEN)`.
+  `StorageService` shows both at once: it *is* a class provider, and its
+  constructor *consumes* the token provider.
+- **The facade coordinates nothing; the service does.** `StorageService` touches
+  only S3; `UploadsRepository` only the DB. `UploadsService` is the one that
+  "serves two concerns" — but by *delegating* to two single-concern collaborators,
+  not by holding their logic. Same shape as Express's `server.js` handlers
+  coordinating the `storage` and `repository` objects; Nest just makes those
+  injectables.
 - **The upload logic isn't framework code.** `client/src/api.js` (sign → POST to
   storage → complete) is plain `fetch`, identical in the React and Svelte
   clients. Only the component layer (state, rendering) differs — which is exactly

@@ -84,4 +84,8 @@ export class UploadsRepository {
       .run({ id, completedAt: Date.now() });
     return this.getById(id)!;
   }
+
+  remove(id: string): void {
+    this.db.prepare(`DELETE FROM uploads WHERE id = ?`).run(id);
+  }
 }

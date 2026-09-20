@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -36,5 +37,13 @@ export class UploadsController {
   @Get(":id/url")
   downloadUrl(@Param("id") id: string) {
     return this.uploads.downloadUrl(id);
+  }
+
+  // 204 No Content on success; the service throws NotFoundException (→ 404) for
+  // an unknown id. HttpCode overrides Nest's default 200 for a DELETE.
+  @Delete(":id")
+  @HttpCode(204)
+  remove(@Param("id") id: string) {
+    return this.uploads.remove(id);
   }
 }

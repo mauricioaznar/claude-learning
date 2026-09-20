@@ -1,32 +1,25 @@
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import {
-  GetObjectCommand,
-  HeadObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { CreateUploadDto } from "./dto/create-upload.dto";
 import { UploadsRepository } from "./uploads.repository";
-import { S3_CLIENT } from "./s3.provider";
+import { StorageService } from "./storage.service";
 
 // All the upload logic. Note how the collaborators arrive: injected through the
-// constructor, not imported. And how status codes are expressed: by throwing
-// Nest's built-in HTTP exceptions instead of calling res.status(...).
+// constructor, not imported. Status codes are expressed by throwing Nest's
+// built-in HTTP exceptions instead of calling res.status(...). The @aws-sdk now
+// lives entirely behind StorageService — this file speaks only the four verbs.
 @Injectable()
 export class UploadsService {
   constructor(
-    @Inject(S3_CLIENT) private readonly s3: S3Client,
+    private readonly storage: StorageService,
     private readonly config: ConfigService,
     private readonly repo: UploadsRepository
   ) {}
@@ -58,15 +51,11 @@ export class UploadsService {
       size: dto.size,
     });
 
-    const { url, fields } = await createPresignedPost(this.s3, {
-      Bucket: this.config.get<string>("s3.bucket"),
-      Key: key,
-      Conditions: [
-        ["content-length-range", 1, cap],
-        ["eq", "$Content-Type", allowed],
-      ],
-      Fields: { "Content-Type": allowed },
-      Expires: this.config.get<number>("uploadUrlTtlSeconds"),
+    const { url, fields } = await this.storage.signUpload({
+      key,
+      contentType: allowed,
+      maxBytes: cap,
+      expiresIn: this.config.get<number>("uploadUrlTtlSeconds"),
     });
 
     return { id, key, upload: { url, fields } };
@@ -77,22 +66,9 @@ export class UploadsService {
     const record = this.repo.getById(id);
     if (!record) throw new NotFoundException("unknown upload");
 
-    let head;
-    try {
-      head = await this.s3.send(
-        new HeadObjectCommand({
-          Bucket: this.config.get<string>("s3.bucket"),
-          Key: record.key,
-        })
-      );
-    } catch (err: any) {
-      if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
-        throw new ConflictException("object not found in storage");
-      }
-      throw err;
-    }
-
-    if (head.ContentLength > this.config.get<number>("maxFileSizeBytes")) {
+    const head = await this.storage.headObject(record.key);
+    if (!head) throw new ConflictException("object not found in storage");
+    if (head.contentLength > this.config.get<number>("maxFileSizeBytes")) {
       throw new PayloadTooLargeException("stored object exceeds cap");
     }
 
@@ -104,16 +80,25 @@ export class UploadsService {
     const record = this.repo.getById(id);
     if (!record) throw new NotFoundException("unknown upload");
 
-    const url = await getSignedUrl(
-      this.s3,
-      new GetObjectCommand({
-        Bucket: this.config.get<string>("s3.bucket"),
-        Key: record.key,
-        ResponseContentDisposition: `attachment; filename="${record.filename}"`,
-      }),
-      { expiresIn: this.config.get<number>("downloadUrlTtlSeconds") }
-    );
+    const url = await this.storage.getDownloadUrl({
+      key: record.key,
+      filename: record.filename,
+      expiresIn: this.config.get<number>("downloadUrlTtlSeconds"),
+    });
 
     return { url };
+  }
+
+  // E7 — Delete. File first (idempotent at S3), then the row. If the storage
+  // delete throws we bail before touching the row — a live row still pointing at
+  // the object is a loud failure, not a silent orphan. Hard delete, so a repeat
+  // call finds no row and 404s; full 204-on-repeat would need a soft-delete
+  // tombstone this lab opted out of.
+  async remove(id: string) {
+    const record = this.repo.getById(id);
+    if (!record) throw new NotFoundException("unknown upload");
+
+    await this.storage.deleteObject(record.key);
+    this.repo.remove(record.id);
   }
 }

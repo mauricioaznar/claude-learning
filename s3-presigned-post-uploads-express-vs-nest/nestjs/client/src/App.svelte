@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { listUploads, uploadFile, downloadUrl } from "./api.js";
+  import { listUploads, uploadFile, downloadUrl, deleteUpload } from "./api.js";
 
   let rows = [];
   let status = "";
@@ -41,6 +41,21 @@
   async function onDownload(id) {
     window.open(await downloadUrl(id), "_blank");
   }
+
+  // Hard delete — confirm first (bytes are gone for good, no soft-delete here).
+  async function onDelete(id, filename) {
+    if (!confirm(`Delete "${filename}"? This can't be undone.`)) return;
+    busy = true;
+    try {
+      await deleteUpload(id);
+      status = "Deleted.";
+      await refresh();
+    } catch (e) {
+      status = e.message;
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <main>
@@ -74,6 +89,11 @@
           {#if r.status === "uploaded"}
             <button class="link" on:click={() => onDownload(r.id)}>Download</button>
           {/if}
+          <button
+            class="link danger"
+            on:click={() => onDelete(r.id, r.filename)}
+            disabled={busy}
+          >Delete</button>
         </div>
       </li>
     {/each}
