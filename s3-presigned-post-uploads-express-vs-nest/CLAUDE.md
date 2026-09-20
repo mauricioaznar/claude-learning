@@ -107,30 +107,75 @@ in a separate project. The root conventions still stand for every other lab.
    `storage.service.ts`. *(No declared interface, so this is a **facade**, not a
    port + adapter — see Learnings.)*
 
-9. **⬜ Extract a `StorageModule`** (`nestjs/`) — today `s3Provider` +
-   `StorageService` live in `UploadsModule.providers`, so the raw `S3_CLIENT`
-   token is injectable anywhere in that module (B's known encapsulation cost).
-   Move both into a dedicated `StorageModule` that **exports only
-   `StorageService`** (not the token); `UploadsModule` then `imports: [StorageModule]`
-   and drops `s3Provider`/`StorageService` from its own `providers`. Because a
-   provider escapes its module only if `exports`ed, `S3_CLIENT` becomes private to
-   `StorageModule` and the facade is the only door — recovering option A's
-   isolation while keeping B's token lesson inside the module. `s3.provider.ts` is
-   unchanged; it just moves which module lists it. Acceptance: `S3_CLIENT` importable
-   only within `storage/`, `UploadsModule` no longer names `s3Provider`, and Nest
-   still boots (the DI graph resolves across the module import). Teaches the
-   module-level `exports` boundary as the visibility control.
+9. **⬜ Extract a *configurable* `StorageModule` (dynamic module)** — turn the
+   storage wiring into its own module **configured at import time**, so the lab
+   exercises the dynamic-module pattern in its own code, not just via
+   `ConfigModule`. Today `s3Provider` + `StorageService` sit in
+   `UploadsModule.providers`, so the raw `S3_CLIENT` token is injectable anywhere
+   in that module (B's encapsulation cost). Move them into a `StorageModule` that
+   takes options through a static `forRoot`/`forRootAsync` and **exports only
+   `StorageService`**:
 
-   > **Note — the token can collapse into the constructor (option A).** Keeping the
-   > `S3_CLIENT` custom-token provider for now (it's the DI lesson), but
-   > `StorageService` could instead build the client in its own constructor from
-   > the injected global `ConfigService` — `this.client = new S3Client({ ... })` —
-   > deleting `s3.provider.ts` and the token entirely. Benefits: **correct typing**
-   > (no untyped token whose value type is unchecked) and **no string/symbol link**
-   > to keep in sync across `provide`/`@Inject`; the client also becomes a truly
-   > private field (airtight isolation, same goal as Ex 9). Cost: loses the in-code
-   > custom-token-provider demonstration and easy fake-`S3Client` injection in unit
-   > tests. Deferred deliberately, not forgotten.
+   ```ts
+   @Module({})
+   export class StorageModule {
+     static forRoot(options: S3Options): DynamicModule {
+       return {
+         module: StorageModule,
+         providers: [
+           { provide: S3_OPTIONS, useValue: options },
+           s3Provider,          // builds S3Client from S3_OPTIONS (not ConfigService)
+           StorageService,
+         ],
+         exports: [StorageService],   // the facade ONLY — not the client/token
+       };
+     }
+   }
+   ```
+
+   `UploadsModule` then `imports: [StorageModule.forRoot({ bucket, region, endpoint,
+   forcePathStyle, credentials })]` — or the idiomatic `forRootAsync({ inject:
+   [ConfigService], useFactory: (c) => ({ ...s3 config... }) })` that computes the
+   options from the injected global `ConfigService` (mirrors
+   `TypeOrmModule.forRootAsync`). What this earns over Ex 8: (1) `S3_CLIENT` and the
+   client are **private** to the module — only the facade escapes via `exports`
+   (the isolation Ex 9 was chasing); (2) the module is **reusable + configurable** —
+   a second import with a different bucket just passes different options;
+   (3) hands-on dynamic-module practice (`forRoot` returning a computed
+   `DynamicModule`). Acceptance: `UploadsModule` imports `StorageModule.forRoot(...)`,
+   `S3_CLIENT`/`S3_OPTIONS` importable only within `storage/`, Nest boots.
+
+   > **Note — the token can still collapse into the constructor (option A).** The
+   > `S3_CLIENT` custom-token provider is kept for the DI lesson, but
+   > `StorageService` could instead build the client in its own constructor from the
+   > injected options (`@Inject(S3_OPTIONS)`) or global `ConfigService` —
+   > `this.client = new S3Client({ ... })` — dropping `s3.provider.ts` and the
+   > token. Benefits: **correct typing** (no untyped token) and **no string/symbol
+   > link** across `provide`/`@Inject`; the client becomes a truly private field.
+   > Cost: loses the in-code custom-token demonstration and easy fake-`S3Client`
+   > injection in tests. Orthogonal to the dynamic-module change — pick either.
+
+   > **Note — make the static/dynamic distinction visible in the code.** The point
+   > of a *dynamic* `StorageModule` is that it takes **import-time options from the
+   > caller** (`StorageModule.forRoot({ bucket, ... })`). That is what makes it
+   > dynamic — *not* the fact that it gets imported (static modules like
+   > `UploadsModule` are imported too), and *not* that it behaves differently per
+   > environment (`UploadsModule` does that while staying static, by *injecting*
+   > `ConfigService`). Land this contrast in comments: `StorageModule` (dynamic —
+   > configured by its caller at the import site) vs. `UploadsModule` (static —
+   > varies by injected config, receives no options). The rebuild should show both
+   > shapes side by side so the difference is unmissable.
+
+### Planned rebuild (Mau, future lesson)
+
+The existing `nestjs/` module is a **reference / answer key**. In a future lesson
+Mau will rebuild the NestJS module from scratch — unaided — in a **new folder
+inside this same subproject** (e.g. `nestjs-rebuild/`, name TBD), applying the
+learnings above: the storage **facade**, the two DI styles, **static vs. dynamic
+modules**, and the configurable `StorageModule` of Ex 9. Ex 9's dynamic
+`StorageModule` is best done *there*, as part of that rebuild, rather than
+retrofitted into `nestjs/` — the reference stays as-is to compare against. The
+Express module is untouched by any of this.
 
 ## Express vs NestJS — the same logic, two shapes
 
