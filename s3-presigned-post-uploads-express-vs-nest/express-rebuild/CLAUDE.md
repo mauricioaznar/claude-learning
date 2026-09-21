@@ -1,12 +1,28 @@
 # express-rebuild — the Express S3 module, rebuilt from scratch
 
 A from-scratch, **unaided** rebuild of the Express presigned-POST upload module.
-The sibling `../express/` is the **answer key** — the goal here is that Mau can
-reproduce it without looking, and *feel the refactor arc* the reference presents
-as a finished result: start with everything tangled in `server.js`, then extract
-the seams, then seal storage behind a single folder boundary so the vendor SDK
-and the client are **fully isolated** — nothing outside `src/storage/` can reach
-them.
+The sibling `../express/` is the **answer key**.
+
+**The test is not "reproduce the S3 contract from memory."** The exact SDK call
+shapes (`createPresignedPost` fields, `getSignedUrl` options, the
+`content-length-range` syntax, which `@aws-sdk` package holds what) are
+**disposable** — look them up while you build. The exercise is passed if you can
+**re-derive the module's shape from the principles**, reading the SDK docs as you
+go but *not* reading `../express/`, and defend why each seam exists.
+
+What's worth keeping (the durable part you're actually practising):
+- **Control plane vs data plane** — authorize and describe the transfer; never
+  carry the bytes.
+- **Enforce at the layer that can't be lied to** — the signed policy is the real
+  gate; the server's `413` is a cheap early bounce.
+- **Reconcile, don't roll back** — pending row → out-of-band upload → `/complete`
+  verifies; cleanup is a *sweep*, not a `catch`.
+- **Order side effects so failure is loud** — delete file first, then row.
+- **Why each seam earns its place** — feel the tangle before you extract; that
+  judgment is the reusable skill, not the final file layout.
+- **Full isolation = the SDK reachable from one place only** — here via a
+  single-entry `src/storage/` folder + `grep`; in Nest via a private DI token.
+  Same end state, different enforcement (the contrast is the point).
 
 The feature set is identical to `../express/` (sign → upload → complete →
 download → delete, all direct-to-storage). **Nothing about the behaviour changes
