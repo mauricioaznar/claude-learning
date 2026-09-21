@@ -69,17 +69,17 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
    `src/config.js`, `src/db.js`, the React client, `docker-compose.yml` (MinIO),
    `.env.example`. Boots and serves the client; `/uploads` 404s until Phase 1.
 
-1. **⬜ Everything mixed** — do *all* of it inline in `server.js`:
+1. **🚧 Everything mixed** — do *all* of it inline in `server.js`:
    `import ... from "@aws-sdk/..."` at the top, `new S3Client({ ... })` built once
    from `config.s3`, hand-written `typeof`/type/size checks returning status
    codes, and `better-sqlite3` calls (via the `db` from `src/db.js`) inline in
    each handler. No factory, no contract, no `repository`. Implement all five
    endpoints. Goal: a working, deliberately tangled `server.js` — feel *why* the
    seams are worth adding before you add them.
-   - [ ] `POST /uploads` — validate (400 missing filename / 415 wrong type / 413
+   - [x] `POST /uploads` — validate (400 missing filename / 415 wrong type / 413
          too big), create the row, sign a presigned POST with the
          `content-length-range` policy, return `{ id, key, upload }`
-   - [ ] `POST /uploads/:id/complete` — HEAD-verify the object exists (409 if
+   - [x] `POST /uploads/:id/complete` — HEAD-verify the object exists (409 if
          not), mark `uploaded`
    - [ ] `GET /uploads/:id/url` — presigned GET (download), with the original
          filename as the download name
@@ -128,12 +128,35 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
    > explicit deps. Portability comes from the **contract shape**, not from
    > factory-vs-singleton. (See `../CLAUDE.md` Learnings.)
 
+## Next session — pick up here
+
+Phase 1 in progress: `POST /uploads` and `POST /uploads/:id/complete` done. Three
+endpoints left: `GET /uploads/:id/url`, `GET /uploads`, `DELETE /uploads/:id`.
+
+**Before writing `GET /uploads/:id/url`, settle the shape first** (define, then
+implement — the open questions from last session):
+1. This returns a presigned **GET**, not a POST — which SDK call/package
+   generates a signed GET URL? (Different from `createPresignedPost`.)
+2. The object key is `uploads/<uuid>`, but the download should save as the
+   *original* filename. Which mechanism carries that? (Named it already — the
+   header that sets the download name.)
+
 ## Failures
 
 *(symptom → cause → fix — record them as they happen, especially the embarrassing
 ones)*
 
-- _none yet — Phase 1 not started._
+- **HEAD 409 never fired** → compared `e.$metadata.httpStatusCode === '404'`
+  (string) when it's a **number** → drop the quotes (`=== 404`). Also `.$metadata`
+  (with `$`) + `httpStatusCode`, not `.metadata.statusCode`.
+- **`/complete` clobbered `created_at`** → the UPDATE set `created_at = @completed_at`
+  → set the `completed_at` column instead; leave `created_at` alone. (Also used
+  `status = 'complete'` where the flow uses `'uploaded'`.)
+- **`HeadObjectCommand is not defined`** → imported only `S3Client` from
+  `@aws-sdk/client-s3` → the command classes live in the same package; add it to
+  that import. (The ReferenceError got caught by the `catch`, where `e.$metadata`
+  was `undefined` and threw again — a defensive `?.` hides this, the import fixes
+  it.)
 
 ## Learnings
 
