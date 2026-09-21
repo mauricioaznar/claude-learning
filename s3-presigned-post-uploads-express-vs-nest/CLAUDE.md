@@ -157,6 +157,17 @@ in a separate project. The root conventions still stand for every other lab.
    > link** across `provide`/`@Inject`; the client becomes a truly private field.
    > Cost: loses the in-code custom-token demonstration and easy fake-`S3Client`
    > injection in tests. Orthogonal to the dynamic-module change — pick either.
+   >
+   > *Why the token exists at all:* an injection token is the concrete **runtime
+   > key** in the DI container's map — the same value on both ends of the wire
+   > (`provide: S3_CLIENT` ↔ `@Inject(S3_CLIENT)`). For your own classes the token
+   > *is* the class (Nest reads it from TS type metadata), so you never write one.
+   > You need an explicit string/symbol token exactly when there's no class to name
+   > — a config object, or a third-party class like `S3Client`. It stands in for an
+   > interface, which **vanishes at runtime** and so can't be a DI key. Option A
+   > sidesteps the whole issue: with the client as a private field there's nothing
+   > to inject, hence no token and no untyped `@Inject` — you just lose the
+   > swap-a-fake seam the token gives you.
 
    > **Note — make the static/dynamic distinction visible in the code.** The point
    > of a *dynamic* `StorageModule` is that it takes **import-time options from the
