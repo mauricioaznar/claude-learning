@@ -107,13 +107,13 @@ in a separate project. The root conventions still stand for every other lab.
    `storage.service.ts`. *(No declared interface, so this is a **facade**, not a
    port + adapter — see Learnings.)*
 
-9. **⬜ Extract a *configurable* `StorageModule` (dynamic module)** — turn the
-   storage wiring into its own module **configured at import time**, so the lab
-   exercises the dynamic-module pattern in its own code, not just via
-   `ConfigModule`. Today `s3Provider` + `StorageService` sit in
-   `UploadsModule.providers`, so the raw `S3_CLIENT` token is injectable anywhere
-   in that module (B's encapsulation cost). Move them into a `StorageModule` that
-   takes options through a static `forRoot`/`forRootAsync` and **exports only
+9. **✅ Extract a *configurable* `StorageModule` (dynamic module)** (`nestjs/`) —
+   moved the storage wiring into its own module under `src/storage/`, **configured
+   at import time**, so the lab exercises the dynamic-module pattern in its own
+   code, not just via `ConfigModule`. Previously `s3Provider` + `StorageService`
+   sat in `UploadsModule.providers`, so the raw `S3_CLIENT` token was injectable
+   anywhere in that module (B's encapsulation cost). `StorageModule` now takes its
+   options through static `forRoot`/`forRootAsync` and **exports only
    `StorageService`**:
 
    ```ts
@@ -133,17 +133,20 @@ in a separate project. The root conventions still stand for every other lab.
    }
    ```
 
-   `UploadsModule` then `imports: [StorageModule.forRoot({ bucket, region, endpoint,
-   forcePathStyle, credentials })]` — or the idiomatic `forRootAsync({ inject:
-   [ConfigService], useFactory: (c) => ({ ...s3 config... }) })` that computes the
-   options from the injected global `ConfigService` (mirrors
-   `TypeOrmModule.forRootAsync`). What this earns over Ex 8: (1) `S3_CLIENT` and the
-   client are **private** to the module — only the facade escapes via `exports`
-   (the isolation Ex 9 was chasing); (2) the module is **reusable + configurable** —
-   a second import with a different bucket just passes different options;
-   (3) hands-on dynamic-module practice (`forRoot` returning a computed
-   `DynamicModule`). Acceptance: `UploadsModule` imports `StorageModule.forRoot(...)`,
-   `S3_CLIENT`/`S3_OPTIONS` importable only within `storage/`, Nest boots.
+   Both entry points are implemented (they differ only in how `S3_OPTIONS` is
+   provided — `useValue` vs. `inject`+`useFactory`); `UploadsModule` uses
+   `forRootAsync({ inject: [ConfigService], useFactory: (c) => c.get("s3") })`,
+   computing the options from the injected global `ConfigService` (mirrors
+   `TypeOrmModule.forRootAsync`). The facade now reads `bucket` from `S3_OPTIONS`,
+   so `StorageService` no longer injects `ConfigService` — the module is fully
+   parameterized by its options. What this earned over Ex 8: (1) `S3_CLIENT` /
+   `S3_OPTIONS` and the client are **private** to the module — only the facade
+   escapes via `exports` (the isolation B lacked); (2) the module is **reusable +
+   configurable** — a second import with a different bucket just passes different
+   options; (3) hands-on dynamic-module practice. Acceptance passed (static grep):
+   `from "@aws-sdk` and `S3_CLIENT`/`S3_OPTIONS` references are confined to
+   `src/storage/`, and `UploadsModule` no longer names `s3Provider`. *(Typecheck /
+   boot still to be run by Mau.)*
 
    > **Note — the token can still collapse into the constructor (option A).** The
    > `S3_CLIENT` custom-token provider is kept for the DI lesson, but
@@ -166,16 +169,18 @@ in a separate project. The root conventions still stand for every other lab.
    > varies by injected config, receives no options). The rebuild should show both
    > shapes side by side so the difference is unmissable.
 
-### Planned rebuild (Mau, future lesson)
+### Rebuild (Mau) — `nestjs-rebuild/` (scaffolded)
 
-The existing `nestjs/` module is a **reference / answer key**. In a future lesson
-Mau will rebuild the NestJS module from scratch — unaided — in a **new folder
-inside this same subproject** (e.g. `nestjs-rebuild/`, name TBD), applying the
-learnings above: the storage **facade**, the two DI styles, **static vs. dynamic
-modules**, and the configurable `StorageModule` of Ex 9. Ex 9's dynamic
-`StorageModule` is best done *there*, as part of that rebuild, rather than
-retrofitted into `nestjs/` — the reference stays as-is to compare against. The
-Express module is untouched by any of this.
+The existing `nestjs/` module is the **reference / answer key**. Mau rebuilds the
+NestJS module from scratch — unaided — in **`nestjs-rebuild/`** (its own
+`CLAUDE.md` holds the phased path). The rebuild deliberately walks the refactor
+arc the reference skips: **Phase 1 everything mixed → Phase 2 seams extracted, one
+module → Phase 3 full isolation via a dynamic `StorageModule`**. `nestjs/` now
+implements Ex 9 (the dynamic `StorageModule`, in `src/storage/`) as the **answer
+key** for Phase 3 — the rebuild re-derives it unaided. The Express module stays
+untouched, and `nestjs-rebuild/` is left for Mau. Runs on port 3003 (reference is
+3002) sharing the same MinIO bucket. **Phase 0 (scaffold) done; Phase 1 pending
+Mau.**
 
 ## Express vs NestJS — the same logic, two shapes
 

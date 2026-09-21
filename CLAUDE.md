@@ -10,7 +10,7 @@ that Mau can rebuild each feature unaided later.
 | --- | --- | --- |
 | `express-cookie-session-sliding-absolute-expiry/` | Cookie-based session auth → access + refresh tokens (Express + SPA) | Exercises 1–8 done (404 handler / request-id still open) |
 | `typescript-access-refresh-tokens-handrolled-jwt/` | Access + refresh tokens, in TypeScript (Express + SPA) | Ex 0–6 done; Ex 7 (optional: rotation + reuse detection) in progress |
-| `s3-presigned-post-uploads-express-vs-nest/` | S3 presigned uploads — Express+React vs NestJS+Svelte | Complete — both modules E1–E6, plus delete + storage-facade extension (Ex 7 Express, Ex 8 Nest) |
+| `s3-presigned-post-uploads-express-vs-nest/` | S3 presigned uploads — Express+React vs NestJS+Svelte | Complete — E1–E6 both modules; +delete/facade (Ex 7–8); +Nest dynamic StorageModule (Ex 9); `nestjs-rebuild/` scaffolded (Mau's from-scratch redo, Phase 1 pending) |
 | `nestjs-graphql-prisma-nplus1-transactions-di/` | NestJS + GraphQL (code-first) + Prisma: N+1, transactions, DI | Phases 1 & 4 done (wrong-way scaffold; DI conventions + circular-dep fixes); Phase 0 (event-loop sandbox) in progress; Phases 2–3 pending |
 | `observables-from-scratch-to-apollo-link/` | Observables from scratch → the production Apollo Client link chain | Lessons 1–4, 7–8 done; next — Lessons 5–6 (cold / Subject hot), then 9 (Apollo link) |
 | `nestjs-outcome-routing-mfa-throttle-cors/` | NestJS auth flow: outcome routing (`decideAfterPassword`), MFA, rate limiting, credentialed CORS | Planned — not scaffolded |

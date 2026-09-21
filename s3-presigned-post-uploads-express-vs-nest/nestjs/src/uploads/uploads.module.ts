@@ -1,16 +1,27 @@
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 
 import { UploadsController } from "./uploads.controller";
 import { UploadsService } from "./uploads.service";
 import { UploadsRepository } from "./uploads.repository";
-import { StorageService } from "./storage.service";
-import { s3Provider } from "./s3.provider";
+import { StorageModule } from "../storage/storage.module";
 
-// The module is the wiring manifest: it declares which controller handles
-// requests and which providers can be injected. Express has no equivalent —
-// wiring there is just imports at the top of server.js.
+// UploadsModule is STATIC: its shape is fixed by this decorator. It imports the
+// DYNAMIC StorageModule, configuring it right here from the injected global
+// ConfigService via forRootAsync — that import-time configuration is what makes
+// StorageModule dynamic. UploadsModule itself takes no options; it varies only by
+// the ConfigService its providers inject, which is exactly why it stays static.
+//
+// Only StorageService is visible from StorageModule (it's the module's single
+// export), so nothing here can reach the raw S3 client or its options.
 @Module({
+  imports: [
+    StorageModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.get("s3"),
+    }),
+  ],
   controllers: [UploadsController],
-  providers: [UploadsService, UploadsRepository, StorageService, s3Provider],
+  providers: [UploadsService, UploadsRepository],
 })
 export class UploadsModule {}

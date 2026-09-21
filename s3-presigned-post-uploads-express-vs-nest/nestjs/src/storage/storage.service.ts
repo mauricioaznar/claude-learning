@@ -1,5 +1,4 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -10,26 +9,24 @@ import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { S3_CLIENT } from "./s3.provider";
+import { S3_OPTIONS, S3Options } from "./s3-options";
 
-// The storage FACADE — the Nest mirror of Express's createS3Storage. Together
-// with s3.provider.ts this is the only place that touches @aws-sdk; it exposes
-// four domain verbs (sign / head / download / delete) so UploadsService never
-// sees the SDK.
-//
-// Two DI styles meet in this constructor: the raw client arrives BY TOKEN
-// (@Inject(S3_CLIENT) — a third-party class Nest builds via useFactory), while
-// this class is an ordinary @Injectable, resolved BY TYPE wherever it's asked
-// for. There is no declared interface, so this is a facade, not a port + adapter
-// — you swap storage by changing the provider, not by implementing a contract.
+// The storage FACADE — the only place besides s3.provider.ts that touches
+// @aws-sdk. Exposes four domain verbs (sign / head / download / delete) so
+// UploadsService never sees the SDK. Both DI styles meet in the constructor: the
+// raw client and the options arrive BY TOKEN, while this class is an ordinary
+// @Injectable resolved BY TYPE. No declared interface, so it's a facade, not a
+// port + adapter. Now that bucket comes from S3_OPTIONS (not ConfigService), the
+// facade depends only on what StorageModule was configured with.
 @Injectable()
 export class StorageService {
   constructor(
     @Inject(S3_CLIENT) private readonly client: S3Client,
-    private readonly config: ConfigService
+    @Inject(S3_OPTIONS) private readonly options: S3Options
   ) {}
 
   private get bucket() {
-    return this.config.get<string>("s3.bucket");
+    return this.options.bucket;
   }
 
   // Sign a presigned POST. The content-length-range condition is baked into the

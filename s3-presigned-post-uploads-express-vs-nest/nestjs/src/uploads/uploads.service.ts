@@ -10,7 +10,7 @@ import { ConfigService } from "@nestjs/config";
 
 import { CreateUploadDto } from "./dto/create-upload.dto";
 import { UploadsRepository } from "./uploads.repository";
-import { StorageService } from "./storage.service";
+import { StorageService } from "../storage/storage.service";
 
 // All the upload logic. Note how the collaborators arrive: injected through the
 // constructor, not imported. Status codes are expressed by throwing Nest's
