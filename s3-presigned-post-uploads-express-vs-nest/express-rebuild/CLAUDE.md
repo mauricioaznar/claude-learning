@@ -69,7 +69,7 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
    `src/config.js`, `src/db.js`, the React client, `docker-compose.yml` (MinIO),
    `.env.example`. Boots and serves the client; `/uploads` 404s until Phase 1.
 
-1. **🚧 Everything mixed** — do *all* of it inline in `server.js`:
+1. **✅ Everything mixed** — do *all* of it inline in `server.js`:
    `import ... from "@aws-sdk/..."` at the top, `new S3Client({ ... })` built once
    from `config.s3`, hand-written `typeof`/type/size checks returning status
    codes, and `better-sqlite3` calls (via the `db` from `src/db.js`) inline in
@@ -81,10 +81,10 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
          `content-length-range` policy, return `{ id, key, upload }`
    - [x] `POST /uploads/:id/complete` — HEAD-verify the object exists (409 if
          not), mark `uploaded`
-   - [ ] `GET /uploads/:id/url` — presigned GET (download), with the original
-         filename as the download name
-   - [ ] `GET /uploads` — list
-   - [ ] `DELETE /uploads/:id` — file first (idempotent at S3), then row; 204 /
+   - [x] `GET /uploads/:id/url` — presigned GET (download), with the original
+         filename as the download name (`ResponseContentDisposition`)
+   - [x] `GET /uploads` — list
+   - [x] `DELETE /uploads/:id` — file first (idempotent at S3), then row; 204 /
          404 on unknown id
 
 2. **⬜ Extract the seams** — refactor Phase 1 *without changing behaviour* into a
@@ -130,16 +130,21 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
 
 ## Next session — pick up here
 
-Phase 1 in progress: `POST /uploads` and `POST /uploads/:id/complete` done. Three
-endpoints left: `GET /uploads/:id/url`, `GET /uploads`, `DELETE /uploads/:id`.
+**Phase 1 complete** — all five endpoints work, tangled inline in `server.js`
+(no factory, no contract, no repository). Next is **Phase 2: extract the seams**.
 
-**Before writing `GET /uploads/:id/url`, settle the shape first** (define, then
-implement — the open questions from last session):
-1. This returns a presigned **GET**, not a POST — which SDK call/package
-   generates a signed GET URL? (Different from `createPresignedPost`.)
-2. The object key is `uploads/<uuid>`, but the download should save as the
-   *original* filename. Which mechanism carries that? (Named it already — the
-   header that sets the download name.)
+Before writing any Phase 2 code, feel the tangle you're about to untie:
+- `const key = \`uploads/${id}\`` is now hand-built in *three* handlers — that
+  duplication is the seam. In Phase 2 key generation still lives in the handler
+  (it needs the id from the repo), but the *storage verbs* move behind
+  `createS3Storage(config)`.
+- Every handler talks to `db` directly with snake_case columns; the list handler
+  aliases `created_at createdAt` inline. Phase 2 pushes that column-mapping into
+  `src/repository.js` so handlers speak camelCase.
+
+Phase 2 acceptance is a `grep`, not taste:
+`grep -rln 'from "@aws-sdk' src server.js` → only under `src/storage/`.
+Behaviour must stay byte-identical to Phase 1 (pure refactor).
 
 ## Failures
 
@@ -157,6 +162,23 @@ ones)*
   that import. (The ReferenceError got caught by the `catch`, where `e.$metadata`
   was `undefined` and threw again — a defensive `?.` hides this, the import fixes
   it.)
+- **`getSignedUrl` returned `undefined`** → wrote `const { url } = getSignedUrl(...)`
+  → two bugs: it's **async** (missing `await`) *and* it resolves to a **bare
+  string**, not `{ url }`. The two presign calls are asymmetric —
+  `createPresignedPost` → `{ url, fields }` object (POST needs endpoint + policy
+  fields), `getSignedUrl` → single string (a GET is just one URL). Fix:
+  `const url = await getSignedUrl(...)`, then wrap it yourself in `res.send({ url })`.
+- **`GET /uploads` threw "Missing named parameter 'id'"** → copy-pasted the
+  `getById` query, so the list still had `where id = @id` but `.all()` passes no
+  params → a list has no WHERE; drop the clause.
+- **Every DELETE returned 404** → kept trying to read success off the S3
+  response: first `if (!s3DeleteResponse.ok)` (`.ok` is *fetch*'s shape, not the
+  SDK's → always `undefined` → always 404), then `httpStatusCode !== 200`
+  (DeleteObject succeeds with **204**, so `!== 200` still fires). Root cause: SDK
+  v3 turns every non-2xx into a **thrown exception**, so a *resolved* `send()` is
+  always 2xx — there is nothing to branch on. Fix: don't inspect the response at
+  all; a resolve = done (DeleteObject is idempotent, success even on a missing
+  key), and the only failure signal is a **rejection** → `try/catch` → `500`.
 
 ## Learnings
 
@@ -171,3 +193,26 @@ ones)*
   single-entry-point folder and a `grep` (convention enforces it). The end state —
   the SDK reachable from one place only — is identical. Note here whatever the
   rebuild made concrete for you.
+- **SDK v3 reports failure by throwing, not by a bad-status response.** The
+  middleware stack converts any non-2xx from S3 into a typed exception
+  (`NoSuchBucket`, `InvalidAccessKeyId`, a network error…). So by the time you
+  hold a *resolved* response its status is guaranteed 2xx — inspecting
+  `$metadata.httpStatusCode` or a (non-existent) `.ok` can only misfire. The only
+  place a misconfiguration is observable is a **`try/catch`**. This flips how you
+  decide whether to branch: you branch on a caught error only when a failure is an
+  *expected outcome you map to a code* (`/complete`: missing object → `409`);
+  when there's no expected-failure to distinguish, the catch is a flat `500`
+  (DELETE) — or you omit it and let Express's default handler 500 for you.
+- **`DeleteObject` is idempotent → nothing to branch on.** Success even when the
+  key is already gone, so a resolved `send()` always means "the object is not
+  there anymore." Combined with the point above, that's *why* DELETE needs no
+  response inspection at all: resolve = done, reject = `500`.
+- **The two presign calls return different shapes** — `createPresignedPost` →
+  `{ url, fields }` (a form policy the browser POSTs a file into), `getSignedUrl`
+  → a bare URL string (a GET has nothing to enforce, so no fields). Match the
+  return you destructure to the call.
+- **The download name rides on the *signed* command.** `ResponseContentDisposition:
+  'attachment; filename="<original>"'` is set as a field on `GetObjectCommand` at
+  signing time; S3 echoes it back as the `Content-Disposition` response header
+  when the URL is used, and the browser saves under that name — even though the
+  key is an opaque `uploads/<uuid>`.

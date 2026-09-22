@@ -3,7 +3,8 @@ import crypto from "node:crypto"
 import { config } from "./src/config.js";
 import {db} from "./src/db.js";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 
 export const client = new S3Client({
@@ -121,8 +122,54 @@ app.post("/uploads/:id/complete", async (req, res) => {
 
 })
 
+app.get('/uploads/:id/url', async (req, res) => {
+  const id = req.params.id;
+  const row = db.prepare(`select * from uploads where id = @id`).get({ id: id });
+  if (!row) {
+    return res.sendStatus(404);
+  }
+  const key = `uploads/${id}`;
+  const url = await getSignedUrl(client, new GetObjectCommand({
+    Bucket: config.s3.bucket,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${row.filename}"`,
+  }),
+      { expiresIn: config.downloadUrlTtlSeconds })
+
+  res.status(200).send({ url })
+})
+
+
+
+
+app.get('/uploads', async (req, res) => {
+  const rows = db.prepare(`select id, key, filename, content_type, size, status, completed_at completedAt, created_at createdAt from uploads`).all();
+  return res.status(200).send(rows)
+})
+
+app.delete('/uploads/:id', async (req, res) => {
+  const id = req.params.id;
+  const key = `uploads/${id}`;
+  const row = db.prepare(`select * from uploads where id = @id`).get({ id: id });
+  if (!row) {
+    return res.sendStatus(404);
+  }
+  try {
+    await client.send(new DeleteObjectCommand({
+      Bucket: config.s3.bucket,
+      Key: key
+    }))
+  } catch (e) {
+    return res.sendStatus(500);
+  }
+
+
+  db.prepare(`delete from uploads where id = @id`).run({ id });
+  return res.sendStatus(204)
+})
+
 app.listen(config.port, () => {
   console.log(
-    `s3-presigned-post-uploads (express-rebuild) listening on http://localhost:${config.port}`,
+      `s3-presigned-post-uploads (express-rebuild) listening on http://localhost:${config.port}`,
   );
 });
