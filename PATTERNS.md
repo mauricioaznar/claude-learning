@@ -39,6 +39,8 @@ what problem it solves — not merely used a framework that happens to embed it.
 | State | ⬜ | explicit state machine — strong candidate: `nestjs-outcome-routing-mfa-*` (password → MFA → done) |
 | Template Method | ⬜ | fixed skeleton, overridable steps |
 | Mediator | ⬜ | central coordinator — candidate: Nest CQRS/EventBus |
+| Visitor | ⬜ | walk a tree with per-node-kind logic — `pricing-formula-*` validator/evaluator (`switch (node.kind)` + `never`, no classes) |
+| Interpreter | ⬜ | grammar → AST → evaluate — `pricing-formula-lexer-parser-evaluator` |
 
 ## Architectural — *how the app is shaped*
 

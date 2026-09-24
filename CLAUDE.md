@@ -17,6 +17,7 @@ that Mau can rebuild each feature unaided later.
 | `nestjs-report-query-indexing-apollo-cache-perf/` | Full-stack NestJS + React/Apollo: slow report queries + indexing (back), cache policies + re-renders (front) | Planned — not scaffolded |
 | `debounce-batch-coalesce-dedup-microtask-lab/` | Promises/async internals from scratch — debouncing (trailing-edge timers), React render batching, request coalescing/dedup; built on the same microtask + timer substrate as the `nestjs-graphql-prisma-nplus1-transactions-di` batch loader. Not yet needed in inopack; learning for depth | Scaffolded — Ex 1–4 stubbed (debounce/batch/coalesce/dedup), pending Mau |
 | `bash-command-dispatcher-from-scratch/` | Bash CLI: rebuild the `inopack` multi-repo git-workflow dispatcher from scratch (reference snapshot bundled). Teaches arg parsing, `case`/`exec`, sourcing helpers, idempotent rc-file edits, git plumbing | Scaffolded — reference bundled, curriculum agreed (E1–E8 + bonus); E1 (dispatcher) next, pending Mau |
+| `pricing-formula-lexer-parser-evaluator/` | Small pricing-formula language in TypeScript: lexer → recursive-descent parser → validator → evaluator (pure-function pipeline, discriminated-union AST, diagnostics with source offsets, error recovery). Never `eval` | Planned — curriculum agreed (M1–M6 + optional M7–M8); next: pick the test runner, then M1 (lexer) tests |
 
 Keep this table thin — one line each, pointing at the project's own `CLAUDE.md`
 for detail. Update it **when an exercise completes**, not on every commit, so
