@@ -1,21 +1,8 @@
 import express from "express";
 import crypto from "node:crypto"
-import { config } from "./src/config.js";
+import {config} from "./src/config.js";
 import {db} from "./src/db.js";
-import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { S3Client, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-
-
-export const client = new S3Client({
-  region: config.s3.region,
-  endpoint: config.s3.endpoint,
-  forcePathStyle: config.s3.forcePathStyle,
-  credentials: {
-    accessKeyId: config.s3.accessKeyId,
-    secretAccessKey: config.s3.secretAccessKey,
-  },
-});
+import {createS3Storage} from "./src/s3.js";
 
 
 // Shell (given): boots Express, serves the compiled client from public/, and
@@ -24,6 +11,8 @@ export const client = new S3Client({
 const app = express();
 app.use(express.json());
 app.use(express.static("public"));
+
+const s3Client = createS3Storage(config);
 
 app.get("/health", (req, res) => {
   res.json({ ok: true });
@@ -71,18 +60,7 @@ app.post("/uploads", async (req, res) => {
   const statementObject = db.prepare(`insert into uploads (id, key, filename, content_type, size, status, created_at, completed_at) values(@id, @key, @filename, @content_type, @size, 'pending', @created_at, null)`)
   statementObject.run({id, key, filename, content_type: contentType, size, created_at: Date.now()})
 
-  const upload = await createPresignedPost(client, {
-    Bucket: config.s3.bucket,
-    Key: key,
-    Conditions: [
-        ["content-length-range", 1, config.maxFileSizeBytes],
-        ["eq", "$Content-Type", config.allowedContentType],
-    ],
-    Fields: {
-      "Content_Type": contentType
-    },
-    Expires: config.uploadUrlTtlSeconds,   // seconds
-  });
+  const upload = await s3Client.signUpload({ key})
 
   return res.status(200).send({
     id,
@@ -105,9 +83,7 @@ app.post("/uploads/:id/complete", async (req, res) => {
   // aws header statemeent
   const key = `uploads/${id}`;
   try {
-    const header = await client.send(
-        new HeadObjectCommand({ Bucket: config.s3.bucket, Key: key })
-    )
+    const header = await s3Client.headObject({ key })
   } catch(e) {
     if (e.$metadata.httpStatusCode === 404) {
       return res.sendStatus(409);
@@ -129,18 +105,9 @@ app.get('/uploads/:id/url', async (req, res) => {
     return res.sendStatus(404);
   }
   const key = `uploads/${id}`;
-  const url = await getSignedUrl(client, new GetObjectCommand({
-    Bucket: config.s3.bucket,
-    Key: key,
-    ResponseContentDisposition: `attachment; filename="${row.filename}"`,
-  }),
-      { expiresIn: config.downloadUrlTtlSeconds })
-
+  const url = await s3Client.getDownloadUrl({ key, filename: row.filename });
   res.status(200).send({ url })
 })
-
-
-
 
 app.get('/uploads', async (req, res) => {
   const rows = db.prepare(`select id, key, filename, content_type, size, status, completed_at completedAt, created_at createdAt from uploads`).all();
@@ -155,15 +122,10 @@ app.delete('/uploads/:id', async (req, res) => {
     return res.sendStatus(404);
   }
   try {
-    await client.send(new DeleteObjectCommand({
-      Bucket: config.s3.bucket,
-      Key: key
-    }))
+    await s3Client.deleteObject({ key })
   } catch (e) {
     return res.sendStatus(500);
   }
-
-
   db.prepare(`delete from uploads where id = @id`).run({ id });
   return res.sendStatus(204)
 })
