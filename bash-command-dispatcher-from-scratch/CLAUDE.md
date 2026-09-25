@@ -19,6 +19,21 @@ these exercises.
 Read the contract alongside each script; several behaviors (confirmation prompts,
 non-interactive handling, ff-only semantics) are specified there, not just in code.
 
+## Warm-up (pre-E1)
+
+E1 packs eight new bash concepts into one script with no prior bash experience
+— too much at once. Before attempting E1, work through small standalone drills
+in `warmup/`, one primitive at a time, each reviewed before moving to the next:
+
+- ⬜ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
+- ⬜ `02-defaults.sh` — `${1:-default}` and `set -u`
+- ⬜ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
+- ⬜ `04-case.sh` — `case` statement
+- ⬜ `05-shift.sh` — `shift`
+- ⬜ `06-functions.sh` — functions + heredoc
+- ⬜ `07-location.sh` — script self-location (`${BASH_SOURCE[0]}`)
+- ⬜ `08-exec.sh` — `exec` vs. a plain call
+
 ## Exercises
 
 Priority path first (the daily-driver reads + install), then the git-workflow
