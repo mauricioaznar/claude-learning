@@ -55,5 +55,5 @@ what problem it solves — not merely used a framework that happens to embed it.
 ## The one test that proves the boundary
 
 For any facade/adapter/port: **`grep` the app for the vendor SDK and expect zero
-hits outside the adapter file.** If `@aws-sdk` appears only in `src/s3.js`, the
+hits outside the adapter file.** If `@aws-sdk` appears only in `src/s3-storage.js`, the
 seam is real and the module is portable. That grep is the acceptance test.

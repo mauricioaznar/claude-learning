@@ -7,7 +7,7 @@ import { createS3Storage } from "./src/s3.js";
 
 // Build the storage adapter once, from config. From here on the handlers speak
 // only the contract (signUpload / headObject / getDownloadUrl / deleteObject) —
-// the vendor SDK is sealed inside src/s3.js and never imported here.
+// the vendor SDK is sealed inside src/s3-storage.js and never imported here.
 const storage = createS3Storage(config.s3);
 
 const app = express();

@@ -141,7 +141,7 @@ browser                        server (control plane)          storage (data pla
 | --- | --- |
 | `server.js` | All routes + logic inline: list, sign (E2), complete (E4), download (E5). Manual validation, manual status codes. |
 | `src/config.js` | Reads `process.env`, applies defaults. An imported singleton. |
-| `src/s3.js` | A module-level `S3Client` singleton built from config. |
+| `src/s3-storage.js` | A module-level `S3Client` singleton built from config. |
 | `src/db.js` | Opens the SQLite file, creates the `uploads` table. |
 | `src/repository.js` | Plain object with `create / getById / list / markUploaded`. |
 | `client/` | **React** (Vite) app: `src/App.jsx`, `src/main.jsx`, `src/api.js`, `src/styles.css`. Builds into `public/`. |

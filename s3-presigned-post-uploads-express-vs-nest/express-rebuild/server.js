@@ -1,8 +1,9 @@
 import express from "express";
 import crypto from "node:crypto"
 import {config} from "./src/config.js";
+import {createS3Storage} from "./src/storage/index.js";
+import {createRepository} from "./src/repository.js";
 import {db} from "./src/db.js";
-import {createS3Storage} from "./src/s3.js";
 
 
 // Shell (given): boots Express, serves the compiled client from public/, and
@@ -12,35 +13,12 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-const s3Client = createS3Storage(config);
+const s3Storage = createS3Storage(config);
+const repository = createRepository(db);
 
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
-
-// ── PHASE 1 STARTS HERE ──────────────────────────────────────────────────────
-// Build the upload flow "everything mixed" first, then refactor (see CLAUDE.md):
-//
-//   Phase 1 — everything mixed: import @aws-sdk right here, `new S3Client()`
-//     inline from config.s3, validate by hand (400/415/413), talk to the `db`
-//     from ./src/db.js inline. No factory, no contract, no repository. Implement
-//     all five endpoints:
-//       POST   /uploads              — validate + sign a presigned POST
-//       POST   /uploads/:id/complete — HEAD-verify the object, mark uploaded (409 if absent)
-//       GET    /uploads/:id/url      — presigned GET (download)
-//       GET    /uploads              — list
-//       DELETE /uploads/:id          — file first, then row; 204 / 404
-//
-//   Phase 2 — extract the seams: pull the vendor SDK into a single
-//     `createS3Storage(config)` factory in ./src/s3.js exposing the four-verb
-//     contract (signUpload / headObject / getDownloadUrl / deleteObject), and a
-//     `repository` in ./src/repository.js. Handlers then speak only the contract.
-//     Acceptance: `grep -rln 'from "@aws-sdk' src server.js` → only src/s3.js.
-//
-// The sibling ../express/ is the answer key — resist reading it until you've
-// tried each phase.
-
-
 
 app.post("/uploads", async (req, res) => {
   const { filename, contentType, size } = req.body ?? {};
@@ -57,10 +35,12 @@ app.post("/uploads", async (req, res) => {
 
   const id = crypto.randomUUID()
   const key = `uploads/${id}`;
-  const statementObject = db.prepare(`insert into uploads (id, key, filename, content_type, size, status, created_at, completed_at) values(@id, @key, @filename, @content_type, @size, 'pending', @created_at, null)`)
-  statementObject.run({id, key, filename, content_type: contentType, size, created_at: Date.now()})
 
-  const upload = await s3Client.signUpload({ key})
+  repository.create({
+    id, key, filename, contentType, size
+  })
+
+  const upload = await s3Storage.signUpload({ key})
 
   return res.status(200).send({
     id,
@@ -75,15 +55,15 @@ app.post("/uploads/:id/complete", async (req, res) => {
     return res.sendStatus(400);
   }
 
-  const results = db.prepare(`select * from uploads where id = @id`).all({ id: id });
+  const record = repository.getById(id)
 
-  if (results.length === 0) {
+  if (!record) {
     return res.sendStatus(404);
   }
   // aws header statemeent
   const key = `uploads/${id}`;
   try {
-    const header = await s3Client.headObject({ key })
+    const header = await s3Storage.headObject({ key })
   } catch(e) {
     if (e.$metadata.httpStatusCode === 404) {
       return res.sendStatus(409);
@@ -91,7 +71,7 @@ app.post("/uploads/:id/complete", async (req, res) => {
     return res.sendStatus(500);
   }
 
-  db.prepare(`update uploads set status = 'uploaded', completed_at = @completed_at where id = @id`).run({ id: id, completed_at: Date.now()})
+  repository.markUploaded(id)
 
   return res.sendStatus(200)
 
@@ -100,33 +80,33 @@ app.post("/uploads/:id/complete", async (req, res) => {
 
 app.get('/uploads/:id/url', async (req, res) => {
   const id = req.params.id;
-  const row = db.prepare(`select * from uploads where id = @id`).get({ id: id });
+  const row = repository.getById(id)
   if (!row) {
     return res.sendStatus(404);
   }
   const key = `uploads/${id}`;
-  const url = await s3Client.getDownloadUrl({ key, filename: row.filename });
+  const url = await s3Storage.getDownloadUrl({ key, filename: row.filename });
   res.status(200).send({ url })
 })
 
 app.get('/uploads', async (req, res) => {
-  const rows = db.prepare(`select id, key, filename, content_type, size, status, completed_at completedAt, created_at createdAt from uploads`).all();
+  const rows = repository.list();
   return res.status(200).send(rows)
 })
 
 app.delete('/uploads/:id', async (req, res) => {
   const id = req.params.id;
   const key = `uploads/${id}`;
-  const row = db.prepare(`select * from uploads where id = @id`).get({ id: id });
+  const row = repository.getById(id);
   if (!row) {
     return res.sendStatus(404);
   }
   try {
-    await s3Client.deleteObject({ key })
+    await s3Storage.deleteObject({ key })
   } catch (e) {
     return res.sendStatus(500);
   }
-  db.prepare(`delete from uploads where id = @id`).run({ id });
+  repository.remove(id)
   return res.sendStatus(204)
 })
 

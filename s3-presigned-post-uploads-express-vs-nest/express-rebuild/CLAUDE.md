@@ -87,10 +87,10 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
    - [x] `DELETE /uploads/:id` — file first (idempotent at S3), then row; 204 /
          404 on unknown id
 
-2. **⬜ Extract the seams** — refactor Phase 1 *without changing behaviour* into a
+2. **✅ Extract the seams** — refactor Phase 1 *without changing behaviour* into a
    `createS3Storage(config)` **factory** and a `repository`, but they can still
    live as plain files the handlers import directly:
-   - `src/storage/s3.js` — `createS3Storage(config)` returning the four-verb
+   - `src/storage/s3-storage.js` — `createS3Storage(config)` returning the four-verb
      contract (`signUpload` / `headObject` / `getDownloadUrl` / `deleteObject`).
      The client + `@aws-sdk` imports live here.
    - `src/repository.js` — an exported `repository` (`create` / `list` /
@@ -102,12 +102,12 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
    - Acceptance: `grep -rln 'from "@aws-sdk' src server.js` → only under
      `src/storage/`. Behaviour identical to Phase 1.
 
-3. **⬜ Full isolation — seal storage behind a folder boundary** — the end state
+3. **✅ Full isolation — seal storage behind a folder boundary** — the end state
    that matches `../nestjs/`'s dynamic `StorageModule`, done the Express way:
    - Everything storage lives under `src/storage/`; a single `src/storage/index.js`
      is the **only** public surface, exporting *only* the storage contract (the
      result of `createS3Storage`, or the factory itself). The `S3Client` and the
-     SDK stay in sibling files (`src/storage/s3.js` / `src/storage/client.js`)
+     SDK stay in sibling files (`src/storage/s3-storage.js` / `src/storage/client.js`)
      that **nothing outside `src/storage/` imports**.
    - `server.js` imports storage *only* from `./src/storage/index.js` — never the
      raw client, never `@aws-sdk`.
@@ -130,21 +130,17 @@ Same marker set as the rest of the repo: **✅ done**, **🚧 in progress**,
 
 ## Next session — pick up here
 
-**Phase 1 complete** — all five endpoints work, tangled inline in `server.js`
-(no factory, no contract, no repository). Next is **Phase 2: extract the seams**.
+**All three phases complete.** `server.js` coordinates `storage` (via
+`src/storage/index.js`) and `repository` (`src/repository.js`); the `@aws-sdk`
+imports and the `S3Client` are reachable only from inside `src/storage/`. Both
+acceptance greps pass:
+- `grep -rln 'from "@aws-sdk' src server.js` → only `src/storage/s3-client.js`
+  and `src/storage/s3-storage.js`.
+- No path under `src/storage/...` is imported from outside the folder except
+  `src/storage/index.js`.
 
-Before writing any Phase 2 code, feel the tangle you're about to untie:
-- `const key = \`uploads/${id}\`` is now hand-built in *three* handlers — that
-  duplication is the seam. In Phase 2 key generation still lives in the handler
-  (it needs the id from the repo), but the *storage verbs* move behind
-  `createS3Storage(config)`.
-- Every handler talks to `db` directly with snake_case columns; the list handler
-  aliases `created_at createdAt` inline. Phase 2 pushes that column-mapping into
-  `src/repository.js` so handlers speak camelCase.
-
-Phase 2 acceptance is a `grep`, not taste:
-`grep -rln 'from "@aws-sdk' src server.js` → only under `src/storage/`.
-Behaviour must stay byte-identical to Phase 1 (pure refactor).
+This module is done as a rebuild target. Remaining work on this project is
+`../nestjs-rebuild/` (Phase 1 pending — see its own `CLAUDE.md`).
 
 ## Failures
 
@@ -179,6 +175,28 @@ ones)*
   always 2xx — there is nothing to branch on. Fix: don't inspect the response at
   all; a resolve = done (DeleteObject is idempotent, success even on a missing
   key), and the only failure signal is a **rejection** → `try/catch` → `500`.
+- **`export` inside a function body** → wrote `export const client = new S3Client(...)`
+  inside `createS3Storage` — `export` is a module-top-level statement only, not
+  legal inside a function → build the client as a plain local `const` the closure
+  returned from the factory captures; nothing inside a factory needs its own
+  `export`, only the factory itself does.
+- **`ReferenceError: S3Client is not defined`, twice, in two different files** →
+  first in the Phase 2 `s3-storage.js` (import list had the three command
+  classes but not `S3Client` itself), then again in the Phase 3
+  `src/storage/s3-client.js` after splitting the client construction into its
+  own file — the split dropped the import entirely. Same failure mode as the
+  `HeadObjectCommand` miss in Phase 1: every `@aws-sdk/client-s3` symbol used
+  has to be named in that file's own import line, and moving code to a new file
+  doesn't carry its imports with it.
+- **Wrong relative import path for `db.js`** → `server.js` (project root) wrote
+  `import {db} from "./db.js"`, but the file lives at `src/db.js` — a plain
+  module-not-found, caught immediately by trying to boot.
+- **Acceptance grep flagged a false positive** → after Phase 3, `grep -rln
+  'from "@aws-sdk' src server.js` still matched `server.js` — not a real import,
+  but the leftover Phase 1/2 instructional comment block, which quoted that
+  exact grep command as text and so matched its own pattern. Stale comments
+  describing a finished phase can sabotage the very acceptance check they
+  describe; delete them once the phase is done.
 
 ## Learnings
 
@@ -216,3 +234,24 @@ ones)*
   signing time; S3 echoes it back as the `Content-Disposition` response header
   when the URL is used, and the browser saves under that name — even though the
   key is an opaque `uploads/<uuid>`.
+- **Parameterizing a factory doesn't decouple it from a dependency's *shape* —
+  only from a specific *instance*.** `createRepository(db)` still assumes
+  whatever it's handed supports `.prepare(sql).run()/.get()/.all()`, exactly as
+  much as `createRepository()` importing `db.js` directly would. Swap the shape
+  and both break identically. What passing `db` (or `config`) as a parameter
+  actually buys — and only when you need it — is testing (inject a fake without
+  touching the real file/global), multiplicity (two instances from one factory),
+  and explicit dependencies (visible in the signature, not hidden behind an
+  import). For an app with exactly one DB and one bucket for its whole life,
+  direct import is an equally defensible choice; parameterizing here was for the
+  practice, not because the app needed it yet.
+- **A shared column-list (projection) string beats `SELECT *` for camelCase
+  mapping.** `ROW_COLUMNS_SELECT = "id, key, ..., created_at createdAt, ..."`,
+  reused by both `list()` and `getById()`, does the snake_case→camelCase mapping
+  once instead of duplicating it per query — and incidentally fixes `SELECT *`
+  being fragile against schema changes. It's not a "schema" (that word means the
+  table's full type/constraint definition) — it's a projection. Safe here only
+  because it's a fixed literal written by us, never derived from request input;
+  interpolating a *caller-supplied* column list into SQL would be a real
+  injection vector the `@id`-style parameter binding doesn't protect against
+  (bound params cover values, never column/table names).

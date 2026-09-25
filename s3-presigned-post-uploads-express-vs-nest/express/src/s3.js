@@ -14,7 +14,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // and never sees the SDK. That's the whole portability claim, and it has a
 // one-line acceptance test:
 //
-//     grep -rl '@aws-sdk' src server.js   # must print only src/s3.js
+//     grep -rl '@aws-sdk' src server.js   # must print only src/s3-storage.js
 //
 // Why a factory (not the old module-level singleton)?
 //   - Injection/testing: hand it a fake config in a test; no global to reset.

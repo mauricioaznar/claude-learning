@@ -1,17 +1,10 @@
 import {createPresignedPost} from "@aws-sdk/s3-presigned-post";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
-import { S3Client, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {DeleteObjectCommand, GetObjectCommand, HeadObjectCommand} from "@aws-sdk/client-s3";
+import {createS3Client} from "./s3-client.js";
 
 export function createS3Storage(config) {
-    const client = new S3Client({
-        region: config.s3.region,
-        endpoint: config.s3.endpoint,
-        forcePathStyle: config.s3.forcePathStyle,
-        credentials: {
-            accessKeyId: config.s3.accessKeyId,
-            secretAccessKey: config.s3.secretAccessKey,
-        },
-    });
+  const client = createS3Client(config)
 
     return {
         signUpload: async ({ key }) => {

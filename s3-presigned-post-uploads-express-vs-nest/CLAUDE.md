@@ -78,15 +78,15 @@ in a separate project. The root conventions still stand for every other lab.
 ### Express-only extension (post-reference, driven by Mau)
 
 7. **✅ Storage contract via factory + delete** (`express/` only) — refactor
-   `src/s3.js` from a bare exported `S3Client` singleton into a
+   `src/s3-storage.js` from a bare exported `S3Client` singleton into a
    `createS3Storage(config)` **factory** returning the contract
    (`signUpload` / `headObject` / `getDownloadUrl` / `deleteObject`). The AWS SDK
-   now imports *only* in `src/s3.js` — the handlers speak the contract. Adds
+   now imports *only* in `src/s3-storage.js` — the handlers speak the contract. Adds
    `DELETE /uploads/:id` (file first, then row; `204` on success, `404` on
    unknown id) and `repository.remove`. React client wired too: `deleteUpload(id)`
    in `api.js` (no body to parse on 204) + a `confirm()`-gated Delete button per
    row in `App.jsx`. Acceptance test:
-   `grep -rln 'from "@aws-sdk' src server.js` prints only `src/s3.js`.
+   `grep -rln 'from "@aws-sdk' src server.js` prints only `src/s3-storage.js`.
    *(NestJS module still on the singleton/inline shape — a future exercise mirrors
    this there as a provider, the Nest-native form of the same factory.)*
 
@@ -188,10 +188,16 @@ NestJS module from scratch — unaided — in **`nestjs-rebuild/`** (its own
 arc the reference skips: **Phase 1 everything mixed → Phase 2 seams extracted, one
 module → Phase 3 full isolation via a dynamic `StorageModule`**. `nestjs/` now
 implements Ex 9 (the dynamic `StorageModule`, in `src/storage/`) as the **answer
-key** for Phase 3 — the rebuild re-derives it unaided. The Express module stays
-untouched, and `nestjs-rebuild/` is left for Mau. Runs on port 3003 (reference is
-3002) sharing the same MinIO bucket. **Phase 0 (scaffold) done; Phase 1 pending
-Mau.**
+key** for Phase 3 — the rebuild re-derives it unaided. Runs on port 3003
+(reference is 3002) sharing the same MinIO bucket. **Phase 0 (scaffold) done;
+Phase 1 pending Mau.**
+
+The sibling **`express-rebuild/`** walked the same three-phase arc and is
+**complete** — Phase 1 (everything mixed) → Phase 2 (seams: `createS3Storage`
+factory + `repository`) → Phase 3 (full isolation: everything storage-related
+sealed under `src/storage/`, a single `index.js` entry point, `@aws-sdk` and the
+client unreachable from outside the folder, proven by `grep`). Its own
+`CLAUDE.md` has the phase-by-phase failures and learnings.
 
 ## Express vs NestJS — the same logic, two shapes
 
@@ -254,7 +260,7 @@ seams are explicit and swappable.
   proxied — the browser POSTs to the absolute MinIO URL the backend returned.
 - **A facade's boundary is grep-checkable.** The storage contract is portable
   exactly when the vendor SDK imports in one file and nowhere else. `grep -rln
-  'from "@aws-sdk' src server.js` returning only `src/s3.js` *is* the proof — not
+  'from "@aws-sdk' src server.js` returning only `src/s3-storage.js` *is* the proof — not
   a matter of taste. Portability comes from the **contract shape**, not from
   factory-vs-singleton; the constructor choice only affects injection/testing.
 - **Factory ≠ swappability.** `createS3Storage` vs `createGcsStorage` are two
