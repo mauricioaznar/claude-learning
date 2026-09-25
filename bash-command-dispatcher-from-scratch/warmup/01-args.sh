@@ -7,3 +7,11 @@
 #
 # Try it with zero args, one arg, and three args — see what changes at each
 # count.
+
+echo "arguments received: $#"
+
+count=1
+for word in "$@"; do
+  echo "$count: $word"
+  count=$((count + 1))
+done

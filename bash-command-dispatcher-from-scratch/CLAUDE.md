@@ -25,7 +25,7 @@ E1 packs eight new bash concepts into one script with no prior bash experience
 — too much at once. Before attempting E1, work through small standalone drills
 in `warmup/`, one primitive at a time, each reviewed before moving to the next:
 
-- ⬜ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
+- ✅ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
 - ⬜ `02-defaults.sh` — `${1:-default}` and `set -u`
 - ⬜ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
 - ⬜ `04-case.sh` — `case` statement
@@ -85,10 +85,32 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 
 *symptom → cause → fix. Record bugs as they happen while rebuilding.*
 
-(none yet)
+- **`01-args.sh` only printed the enumerated list, not the total count** →
+  the spec asks for two outputs (how many args, and each one numbered) →
+  missed the first half → added an explicit line reporting the total before
+  the loop.
+- **`01-args.sh` computed the total by looping over `"$@"` twice** — once
+  just to count, once to print — instead of using `$#`, which already holds
+  the count with no loop needed. Two loops doing the job of one builtin +
+  one loop.
 
 ## Learnings
 
 *concepts that stuck, in plain words, for a cold reader.*
 
-(none yet)
+- **`"$@"` vs `$@`.** Quoted, each positional parameter expands as its own
+  intact word — an argument containing a space stays one item. Unquoted,
+  bash concatenates them and then word-splits the result on `IFS`
+  (whitespace, by default), so an argument like `"foo bar"` gets split back
+  into two separate words. Quote it essentially always. `"$*"` is a third,
+  different form: it joins every argument into one single string.
+- **`$#` is the argument count, `$@` is the argument list — different
+  variables, don't loop to compute what `$#` already gives you.**
+- **Bash variable assignment has no declaration keyword — it's recognized by
+  shape.** `name=value`, with **no space** on either side of the `=`, at the
+  start of a simple command, is what makes bash treat it as an assignment
+  instead of trying to run a command. `count = 1` (with spaces) is NOT an
+  assignment — it's three words, and bash tries to run a command literally
+  named `count`, passing it `=` and `1` as arguments, which fails with
+  "command not found." Reading and writing use different syntax on purpose:
+  `name=value` to set, `$name` to expand.
