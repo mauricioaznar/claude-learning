@@ -1,5 +1,8 @@
 # S6 — [ vs [[
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Idea: `[` is an ordinary command (another name for `test`). Bash runs every
 # step from S2–S5 on the line first, then hands `[` the finished argv.
 # `]` is just its required last argument. `[` then reports true/false through

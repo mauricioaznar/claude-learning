@@ -1,5 +1,8 @@
 # S1 — argv: a command receives a list, not a line
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Worksheet, not a script. For each case: write your prediction on the
 # `# predict:` line FIRST, then type the command in a terminal (from this
 # folder) and write what really happened on `# actual:`. A wrong prediction

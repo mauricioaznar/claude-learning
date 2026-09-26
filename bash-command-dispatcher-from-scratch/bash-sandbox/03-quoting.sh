@@ -1,5 +1,8 @@
 # S3 — quoting: single, double, none
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Idea: quotes don't become part of the argument. They are instructions that
 # say which later processing steps may touch the text inside:
 #   '...'   nothing happens inside. Not even $x. Fully literal.

@@ -1,5 +1,8 @@
 # S8 — $(...) command substitution
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Idea: $(cmd) runs cmd, captures what it printed to stdout, and puts that
 # text into the line in its place. Trailing newlines are removed. Like $x,
 # the result is word-split and globbed unless it is inside "...".

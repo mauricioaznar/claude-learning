@@ -1,5 +1,8 @@
 # S5 — globbing (pathname expansion)
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Idea: after splitting, any UNQUOTED word containing * ? or [...] is treated
 # as a filename pattern. Bash replaces it with the list of matching filenames
 # in the current directory. The program never sees the *.

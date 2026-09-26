@@ -1,5 +1,8 @@
 # S7 — $?, && and ||
 #
+# Reading a case: type the command exactly as written, including ; && > |.
+# Only a spaced-out `and` / `vs` separates two commands, so run each side on its own.
+#
 # Idea: every command ends with an exit status, a number from 0 to 255.
 # 0 means success; anything else means failure. $? holds the status of the
 # most recent command, and it is overwritten by the very next one.
