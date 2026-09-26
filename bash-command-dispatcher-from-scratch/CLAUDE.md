@@ -19,6 +19,24 @@ these exercises.
 Read the contract alongside each script; several behaviors (confirmation prompts,
 non-interactive handling, ff-only semantics) are specified there, not just in code.
 
+## Sandbox — how bash builds a command's arguments
+
+Added before drill 3.1: the predictions depend on a model of how bash turns a
+typed line into the argv a program receives, which the drills hadn't taught
+yet. `bash-sandbox/` holds predict-then-run worksheets (`# predict:` then
+`# actual:`), measured with `./args` (Mau writes it in S1), which prints the
+arg count and each arg in `<…>`. `glob-playground/` holds fixture files for S5.
+S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
+
+- ⬜ `01-argv.sh` — a command receives a list, not a line; why `echo` hides it
+- ⬜ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
+- ⬜ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
+- ⬜ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
+- ⬜ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
+- ⬜ `06-brackets.sh` — `[` is a command, `[[` is grammar
+- ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
+- ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
+
 ## Warm-up
 
 Each reference script packs several new bash concepts into one file — too much
