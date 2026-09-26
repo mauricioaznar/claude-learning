@@ -13,3 +13,8 @@
 #
 # The brackets are the point: they show where each argument starts and ends,
 # including empty ones and ones with spaces. Keep it to a few lines.
+echo "args count $#"
+
+for word in "$@";
+  do echo "<$word>"
+done

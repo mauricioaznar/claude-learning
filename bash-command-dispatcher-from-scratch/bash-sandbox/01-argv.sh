@@ -13,21 +13,26 @@
 
 # 1. ./args one two three
 #    How many args?
-# predict:
-# actual:
+# predict: 3
+# actual: 3
 
 # 2. ./args "one two" three
 #    How many args? What are they?
-# predict:
-# actual:
+# predict: 2
+# actual: <one two> <three>. two separate arguments. Quoted text doesnt get split?
 
 # 3. ./args ""        and        ./args
 #    How many args in each? Are these the same thing?
-# predict:
-# actual:
+# predict: 1 and 0
+# actual: 1 and 0. First argument is empty but assigned. set -u complains when unset and used somewhere.
 
 # 4. echo "one two" three        vs        echo one two three
 #    Does the output differ? Then run both through ./args instead.
 #    Why can't echo tell you how many arguments it received?
-# predict:
-# actual:
+# predict: single argument, ignore quotes
+# actual: same output different internal flow. "one two" doesnt get split but has coincidentlly one space. Each argument get passed as a single parameter no spaces (preserver spaces in quotes). second case recieves three argumetns ang get joined with an space.
+
+
+#set -u complains about unset variables.
+#${1:-"fallback"} treats empty and unset. so $1 = "" will fallback
+#${1-"fallback"} treats only unset, so $1 = "" wont fallback

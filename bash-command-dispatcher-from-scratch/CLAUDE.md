@@ -28,7 +28,7 @@ yet. `bash-sandbox/` holds predict-then-run worksheets (`# predict:` then
 arg count and each arg in `<…>`. `glob-playground/` holds fixture files for S5.
 S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 
-- ⬜ `01-argv.sh` — a command receives a list, not a line; why `echo` hides it
+- ✅ `01-argv.sh` — a command receives a list, not a line; why `echo` hides it
 - ⬜ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
 - ⬜ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
 - ⬜ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
@@ -133,6 +133,23 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 - **`03`: no-arg run crashed under `set -u`** → `"$1"` unguarded, script died
   on the `[[ ]]` line with `$1: unbound variable` before either branch →
   `"${1:-}"`.
+- **S1: `args` again printed only the list, no count** — the same miss as
+  `01-args.sh` (spec gives two outputs; only the loop got written) → added
+  `echo "args count $#"` before the loop. Recurred: re-read the spec's
+  example output before calling it done.
+- **S1: every `./args` call printed two extra `one two three` lines** →
+  scratch `echo` experiments were typed into the `args` file instead of the
+  terminal, so they became part of the measuring tool → deleted them. A tool
+  that prints extra lines makes every later measurement misleading.
+- **S1 case 3: `./args "" and ./args` reported 3 args** → typed the whole
+  worksheet line, so `and` and `./args` were just more arguments (accidentally
+  proving S1's point) → run each side of an `and`/`vs` separately.
+- **S1 case 4: predicted echo "gets a single argument and ignores quotes"** →
+  identical output looked like identical input → `./args` showed 2 vs 3 args;
+  echo joins its arguments with one space, which hides the boundaries. echo
+  never sees quotes — bash removes them before the program runs.
+- **Claimed `set -u` treats empty as unset** → mixed it up with the colon in
+  `${1:-x}` → `set -u` errors only on *unset*; set-but-empty passes.
 
 ## Learnings
 
@@ -187,6 +204,16 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   where a word ends. `'…'`: nothing special. `"…"`: `$` still expands, but the
   result isn't split or globbed. Default (`${1:-}`) handles *unset*; quotes
   handle *splitting* — separate problems, use both: `"${1:-}"`.
+- **A program receives an array of strings (argv), never your typed line.**
+  Unquoted whitespace is where bash cuts the line into arguments, and then
+  it's discarded — one space or five, same single boundary. Quoted spaces are
+  kept as ordinary characters inside one argument. `echo` prints its
+  arguments joined by one space, so `echo "one two" three` (2 args) and
+  `echo one two three` (3 args) look identical. To see real boundaries, print
+  each argument in brackets (`bash-sandbox/args`).
+- **`""` vs no argument.** `./args ""` → `$#` is 1 and `$1` is *set* to the
+  empty string. `./args` → `$#` is 0 and `$1` is *unset*. Bash's terms are
+  set/unset, not assigned/unassigned.
 - **stderr:** `>&2` redirects a command's stdout to fd 2. Errors go there.
 - **macOS `/bin/bash` is 3.2.** Unbound-variable exit code differs (127 vs 1),
   and `"$@"` with no args errors under `set -u` there (fixed in 4.0).
