@@ -1,0 +1,4 @@
+# Shell scripts must keep LF line endings — with CRLF, bash reads the trailing
+# \r as part of each line (`bash\r: No such file`, `$'\r': command not found`).
+*.sh text eol=lf
+bash-command-dispatcher-from-scratch/bash-sandbox/args text eol=lf
