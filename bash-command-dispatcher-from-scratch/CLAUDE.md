@@ -19,15 +19,20 @@ these exercises.
 Read the contract alongside each script; several behaviors (confirmation prompts,
 non-interactive handling, ff-only semantics) are specified there, not just in code.
 
-## Warm-up (pre-E1)
+## Warm-up
 
-E1 packs eight new bash concepts into one script with no prior bash experience
-— too much at once. Before attempting E1, work through small standalone drills
-in `warmup/`, one primitive at a time, each reviewed before moving to the next:
+Each reference script packs several new bash concepts into one file — too much
+at once with no prior bash experience. Before rebuilding a command, work through
+small standalone drills in `warmup/<command>/`, one primitive at a time, each
+reviewed (statically, pasted in chat) before moving to the next. Add a new
+subfolder when another command needs its own primitives.
+
+### `warmup/install-shorthand/` — primitives for `install-shorthand.sh`
 
 - ✅ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
-- ⬜ `02-defaults.sh` — `${1:-default}` and `set -u`
-- ⬜ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
+- ✅ `02-defaults.sh` — `${1:-default}` and `set -u`
+- ✅ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
+- ⬜ `03-1-predictions.sh` — predict-only: expansion pipeline vs quoting, `[ ]` (command) vs `[[ ]]` (grammar)
 - ⬜ `04-case.sh` — `case` statement
 - ⬜ `05-shift.sh` — `shift`
 - ⬜ `06-functions.sh` — functions + heredoc
@@ -93,6 +98,23 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   just to count, once to print — instead of using `$#`, which already holds
   the count with no loop needed. Two loops doing the job of one builtin +
   one loop.
+- **`${$1:-fallback}` → `bad substitution`** → wrote the `$` inside the
+  braces, treating it as part of the name; `$` is the expand operator and the
+  opening `${` already supplies it, so bash read `$$` (PID) then choked on
+  `1` → write the bare name: `${1:-...}`.
+- **`fallback="world"` + `${1:-fallback}` always printed the text
+  "fallback"** → the word after `:-` is literal text, so it never read the
+  variable (line 1 was dead code, masked because value and text were the same
+  word) → `${1:-$fallback}`.
+- **`03`: non-"ok" input exited 0** → first draft had only an `if … then
+  exit 0; fi`, no `else`; an `if` where no branch runs returns 0, so the script
+  fell off the end reporting success → explicit `else` with `exit 1`.
+- **`03`: `echo "" exit 1` never exited** → no `;`/newline between them, so
+  `exit` and `1` were just more arguments to `echo` (and it printed to stdout,
+  not stderr) → separate commands, `echo "failure" >&2; exit 1`.
+- **`03`: no-arg run crashed under `set -u`** → `"$1"` unguarded, script died
+  on the `[[ ]]` line with `$1: unbound variable` before either branch →
+  `"${1:-}"`.
 
 ## Learnings
 
@@ -114,3 +136,39 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   named `count`, passing it `=` and `1` as arguments, which fails with
   "command not found." Reading and writing use different syntax on purpose:
   `name=value` to set, `$name` to expand.
+
+- **`${name:-default}` has two slots.** The *name* slot (before the
+  operator) is a bare variable name — never a `$`. The *word* slot (after) is
+  ordinary text, expanded like a double-quoted string: `$var` inside it is a
+  variable, plain letters are literal. The word is only expanded when the
+  default is actually used.
+- **`:-` vs `-`.** With the colon, empty (`""`) is treated like unset → the
+  default kicks in. Without it, only unset triggers the default; an explicit
+  empty argument is kept.
+- **`set -u` (nounset).** Reading an *unset* variable becomes an error
+  (`x: unbound variable` on stderr, script exits non-zero at that line).
+  Without it, bash silently expands the typo to an empty string and keeps
+  going. Set-but-empty passes. Default expansions (`${x:-..}` etc.) guard the
+  name slot only — an unset variable in the word slot still trips it. Under
+  `set -u` a bare `$1` with no args fails, which is why the dispatcher uses
+  `${1:-help}`. Careful: `set - u` (with a space) is different — it sets `$1`
+  to `u`.
+- **Exit codes: 0 = success, non-zero = failure.** `$?` holds the last
+  command's code; `exit N` sets the script's. With no explicit `exit`, a
+  script returns its last command's code — fragile, so be explicit.
+- **`if` runs a command and branches on its exit code** — it doesn't evaluate
+  a boolean. `[[ … ]]` / `[ … ]` are just commands that exit 0 (true) or 1.
+- **`[ ]` vs `[[ ]]`.** `[` is a command (= `test`, POSIX): its arguments are
+  expanded normally, so unquoted `$x` gets word-split and globbed → "unary
+  operator expected" / "too many arguments". `[[` is a bash keyword: no
+  splitting/globbing inside, supports `&&`, `||`, `=~`. Inside both, `=` is
+  comparison, never assignment.
+- **Expansion vs quoting.** Expansion = bash replacing `$x`, `$(cmd)`,
+  `$((…))`, `*`, `~` with values *before* the command runs. Quotes don't make
+  "strings" (everything is text); they control which characters are special and
+  where a word ends. `'…'`: nothing special. `"…"`: `$` still expands, but the
+  result isn't split or globbed. Default (`${1:-}`) handles *unset*; quotes
+  handle *splitting* — separate problems, use both: `"${1:-}"`.
+- **stderr:** `>&2` redirects a command's stdout to fd 2. Errors go there.
+- **macOS `/bin/bash` is 3.2.** Unbound-variable exit code differs (127 vs 1),
+  and `"$@"` with no args errors under `set -u` there (fixed in 4.0).
