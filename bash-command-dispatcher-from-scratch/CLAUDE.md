@@ -32,7 +32,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
 - ✅ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
 - ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
-- ⬜ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
+- ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ⬜ `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
 - ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
@@ -188,6 +188,34 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   `"a $unset c"` → `a  c`, and empty IFS cuts nothing → `<a  c>`.
 - **Claimed `set -u` treats empty as unset** → mixed it up with the colon in
   `${1:-x}` → `set -u` errors only on *unset*; set-but-empty passes.
+- **S5 case 1: predicted `*.txt` splits `d e.txt` into two args** → reasoned
+  "globbing doesn't add quotes", as if a later step would re-split the result
+  → globbing runs *after* splitting and nothing re-splits after it, so each
+  match is one arg. The pipeline written in the same prediction already
+  answered it — check the step order before reasoning about quotes.
+- **S5 case 2: predicted `"*.txt"` globs "into the quotes" → one arg holding
+  all matches** → treated quotes as a container for results → quotes mark the
+  typed characters as ordinary, so a quoted `*` is a literal asterisk and
+  globbing never runs → `<*.txt>`. Special inside `"…"` is exactly `$` `` ` ``
+  `"` `\` (not `${}` — the `$` is the special char).
+- **S5 extra case: predicted `"d "*.txt` → `d apple.txt`, `d banana.txt`, …**
+  → thought the glob expands first, then the prefix is glued onto each match
+  (that's how brace expansion behaves) → the whole word is *one pattern*
+  matched against existing names: quoted chars are literal, the unquoted `*`
+  is the wildcard → only `d e.txt`. A glob filters; it never invents names.
+- **S5 case 3: predicted `*.md` (no match) → zero args** → reused S4's
+  empty-word rule, which is about expansions that produce empty text → a
+  no-match glob produces the *unchanged word*, so `args` got `<*.md>`.
+- **S5 case 4: predicted unquoted `$p` (p="*.log") stays `<*.log>`** → as if
+  the assignment's quotes stayed attached to the value → quotes are consumed
+  by the assignment command; `p` stores bare characters. Each use re-runs the
+  pipeline, and unquoted `$p` is split *and globbed* → `<cherry.log>`.
+- **`args` one-line rewrite: an `[[ -n $word ]]` guard hid empty args** →
+  aimed a "zero args" guard at the wrong thing (a `for` over zero args already
+  prints nothing; only `printf fmt "$@"` needs a guard) → then patched it with
+  an `else` printing `<>`, which is what `"<$word>"` already gives for an empty
+  word → deleted the `if`. Substitute the edge value by hand before adding a
+  branch for it; quoting already handles empty.
 
 ## Learnings
 
@@ -308,3 +336,47 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   line`). Change it inside `( … )` so the subshell's change doesn't leak.
 - **zsh doesn't word-split unquoted `$x`.** Run S4/S5 inside `bash`
   (`/bin/bash` is 3.2 on macOS; fine for the sandbox).
+- **The full order:** tokenizing → expansion → word splitting → globbing →
+  quote removal → run. Quote removal only deletes typed quote characters; it
+  never cuts a word.
+- **Glob characters:** `?` = exactly one char (a space counts), `*` = zero or
+  more, `[ab]` / `[!a]` = one char from / not from a set. `*` and `?` skip a
+  leading `.` (dotfiles) unless the pattern starts with `.`.
+- **Each glob match is exactly one arg, spaces included.** No step after
+  globbing re-splits, so `for f in *.txt` / `./args *.txt` are safe with
+  spaced filenames. Filenames only break once stored as text and expanded
+  again unquoted (S4 splitting). Quotes are never "added" to results — the
+  question is always whether a later step re-reads the text.
+- **A glob word is one pattern, quoted per character.** `"d "*.txt` matches
+  names starting `d ` and ending `.txt`: quoted chars are literal parts of the
+  pattern, unquoted `* ? [` are wildcards. The word globs if any wildcard is
+  unquoted. Globs filter existing names; brace expansion (`d{1,2}.txt`)
+  generates text without looking at the disk.
+- **No match → the word passes through unchanged** (bash default). So
+  `for f in *.log` with no logs loops once with `f='*.log'`. `shopt -s
+  nullglob` makes it vanish instead; `shopt -s failglob` makes it an error;
+  zsh errors by default (`no matches found`). Guard loops with nullglob or
+  `[[ -e $f ]] || continue`.
+- **Variables store characters, not quoting.** `p="*.log"` stores `*.log`;
+  its quotes belonged to that assignment and are gone. Globbing only asks
+  whether a char is quoted *in the current command*, not where it came from,
+  so unquoted `$p` globs. Unquoted expansion = split + glob; that's the full
+  reason to write `"$var"` (e.g. `rm $file` with `file='report*.txt'`).
+- **`printf` vs `echo`.** `printf` adds no newline unless the format has
+  `\n`, and repeats its format once per remaining argument (`printf '<%s> '
+  "$@"`) — but with zero args still prints it once (`<> `). Keep data out of
+  the format string (a `%` in data would be read as a directive). `%d` for
+  numbers, `%s` for strings. Plain `echo` = just a newline.
+- **Comparison operators in `[[ ]]`:** strings `==` `!=` `-z` (empty) `-n`
+  (non-empty); numbers `-eq -ne -lt -le -gt -ge`, or `(( a > b ))` with the
+  usual symbols. `<`/`>` inside `[[ ]]` compare *strings*: `[[ 10 < 9 ]]` is
+  true. To tell "no args" from "one empty arg", test `$#`, never `$1`.
+- **When the pipeline runs: per command, right before it runs.** Bash reads
+  one complete command (a line, or a whole `if…fi` / `for…done` / function
+  block), tokenizes it once, then — as each simple command inside is about to
+  execute — does expansion → splitting → globbing → quote removal and runs it.
+  So `x=hi; echo $x` works on one line, loops re-expand every iteration, and a
+  syntax error on line 50 doesn't stop lines 1–49 from running (unlike JS,
+  which parses the whole file first).
+- **Debugging:** `echo "[$x]"` (brackets show empty), `"${1-UNSET}"` (unset vs
+  empty), `set -x` / `bash -x script` (prints each command after expansion).

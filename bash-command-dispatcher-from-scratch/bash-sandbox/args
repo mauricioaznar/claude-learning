@@ -2,19 +2,19 @@
 # args — the sandbox's measuring tool. YOU write this (part of S1).
 #
 # It should print exactly what it received:
-#   - first line: how many arguments it got
-#   - then each argument on its own line, wrapped in angle brackets
+#   - how many arguments it got
+#   - then each argument on the same line, wrapped in angle brackets
 #
 # Example — `./args one "two three" ""` must print:
-#   3 args
-#   <one>
-#   <two three>
-#   <>
+#   args count 3: <one> <two three> <>
 #
 # The brackets are the point: they show where each argument starts and ends,
 # including empty ones and ones with spaces. Keep it to a few lines.
-echo "args count $#"
 
+printf "args count %d:" "$#"
 for word in "$@";
-  do echo "<$word>"
+  do
+    printf " %s" "<$word>"
 done
+
+echo
