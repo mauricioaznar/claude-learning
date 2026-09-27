@@ -27,16 +27,23 @@
 
 # 3. ./args "a>out.txt"        and        ./args a\>out.txt
 #    Is a file created? How many args?
-# predict:
-# actual:
+# predict: first case it will print "a>out.txt" as text. The bash script sees quotes so it doesnt expand the classify into tokens and operators. second i think it will output a into out.txt though the \ operator a question mark for me
+# actual: second case escapes ">" using "\" shows "a>out.txt" as a single argument. first case takes "a>out.txt" as a single argument
 
 # 4. ./args x < missing-file
 #    (there is no file called missing-file)
 #    Does ./args run at all? Who prints the error — bash or ./args?
-# predict:
-# actual:
+# predict: your indication is pointing that ./args doesnt show the error but something else. Since we covered the two standard outputs that leaves stderr as the only possible choice. Seems like < means read from
+# actual: no args count line
+# Does ./args run at all? Program is never started. Shell prepares arguments, redirection, if anything of that fails. Shell stops
 
 # 5. ./args a && ./args b
 #    Is && an argument to the first ./args? Who decides whether the second runs?
-# predict:
-# actual:
+# it isnt shell does the handling.
+# predict: Seems like && means continue workng, sort of like new line
+# actual: both stdout conent showed on the console
+
+# 6. ./args x < missing-file && ./args b
+#    Is && an argument to the first ./args? Who decides whether the second runs?
+# predict: ./args b doesnt run. && means run only if the previous command didnt fail (stderr is empty?)
+# actual: first command fail. zsh error.  Shell sees "&&" and looks at the exit status of previous command before running ./args b. Since it was differnt than 0 (non sucess) it doesnt run the next command after "&&"

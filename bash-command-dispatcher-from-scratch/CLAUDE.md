@@ -29,8 +29,8 @@ arg count and each arg in `<…>`. `glob-playground/` holds fixture files for S5
 S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 
 - ✅ `01-argv.sh` — a command receives a list, not a line; why `echo` hides it
-- ⬜ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
-- ⬜ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
+- ✅ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
+- ✅ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
 - ⬜ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ⬜ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ⬜ `06-brackets.sh` — `[` is a command, `[[` is grammar
@@ -148,6 +148,26 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   identical output looked like identical input → `./args` showed 2 vs 3 args;
   echo joins its arguments with one space, which hides the boundaries. echo
   never sees quotes — bash removes them before the program runs.
+- **S2 case 3: recorded that `./args a\>out.txt` overwrote `out.txt`** →
+  the file was left over from case 2 (the `rm out.txt` step was skipped); its
+  timestamp and contents (`<a>`, case 2's output) showed nothing had touched
+  it → deleted it, re-ran, no file. Clean up fixtures between cases, and check
+  a file's contents/mtime before crediting a command with writing it.
+- **S2 case 6: predicted `&&` checks whether stderr is empty** → confused
+  "what got printed" with "how the command ended" → `&&`/`||` look only at the
+  exit status (0 = success). The shell never inspects output.
+- **S2 case 6: "actual" line was a copy of case 5's** → claimed both commands
+  printed, though case 4 had just shown a failed redirection means the command
+  never starts → re-ran and recorded only the shell's error. An "actual" must
+  come from the run, not from the previous answer.
+- **S3 case 3: `"$xworld"` recorded as 0 args** → it was typed unquoted; an
+  unquoted empty expansion vanishes, a quoted one stays as one empty arg
+  (`<>`) → re-ran as written: `args count 1`.
+- **S3 case 7: right rule, wrong conclusion** → knew `'` is ordinary inside
+  `"…"`, still predicted `"'$x'"` wouldn't expand → the *outer* quote sets the
+  rules; inner quote chars are just data, so `$x` still expands → `<'hello'>`.
+- **S3 quiz: `'cost $5, '" it's cheap"` gave two spaces** → both glued pieces
+  carried a space at the join → keep it on one side only.
 - **Claimed `set -u` treats empty as unset** → mixed it up with the colon in
   `${1:-x}` → `set -u` errors only on *unset*; set-but-empty passes.
 
@@ -217,3 +237,43 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 - **stderr:** `>&2` redirects a command's stdout to fd 2. Errors go there.
 - **macOS `/bin/bash` is 3.2.** Unbound-variable exit code differs (127 vs 1),
   and `"$@"` with no args errors under `set -u` there (fixed in 4.0).
+- **Tokenizing happens first.** Before any `$` or `*` expansion, the shell
+  cuts the line into words and operators (`;` `&&` `||` `|` `<` `>`).
+  Operators need no surrounding spaces (`a>out.txt` is 3 tokens) and are never
+  passed to the program. Quoting (`"…"`, `'…'`, or `\` for one character)
+  turns an operator character back into an ordinary one; the quotes are removed
+  before the program runs, so `./args "a>b"` and `./args a\>b` both receive
+  `a>b`.
+- **Redirections are set up by the shell before the program starts.** `>`
+  opens (creates/truncates) the file and wires it to stdout; `<` wires a file
+  to stdin. The program never sees them in argv. If setting one up fails
+  (`< missing-file`), the shell prints its own error, the command's status is
+  non-zero, and the program is never started.
+- **Three standard streams:** stdin (fd 0, `<`), stdout (fd 1, `>`), stderr
+  (fd 2, `2>`). `>>` appends instead of truncating.
+- **List operators decide on exit status only:** `;`/newline → always run the
+  next; `&&` → only if the previous exited 0; `||` → only if non-zero.
+- **Terminal is zsh, worksheets target bash.** Tokenizing/redirection behave
+  the same; splitting (S4) and globbing (S5) don't — run those with `bash`.
+- **Quotes are rules for the text inside, then deleted.** `'…'`: nothing
+  special, not even `\`. `"…"`: only `$`, `` ` ``, `"`, `\` are special;
+  expansions happen but the result isn't split or globbed. The *outer* quote
+  decides: `'` inside `"…"` (and `"` inside `'…'`) is an ordinary character.
+  Quote removal happens last, so the program never sees quote characters.
+- **Adjacent pieces glue into one word.** A word only ends at unquoted
+  whitespace or an operator, so `"a"'b'c` → `abc`, and quoting styles can be
+  mixed inside one argument: `'cost $5,'" it's cheap"`. A `'` can't appear
+  inside `'…'` at all — close, add it, reopen: `'it'\''s'` (the idiom), or use
+  `"…"` with `\$`.
+- **Backslash inside `"…"`** escapes only `$` `` ` `` `"` `\` newline and is
+  then removed (`"\$x"` → `$x`); before anything else it stays (`"a\b"` →
+  `a\b`). Inside `'…'` it's just a character.
+- **Variable-name boundaries.** After a bare `$`, the name is the longest run
+  of letters/digits/`_`: `$xworld` is the variable `xworld`. `${x}world`
+  delimits it explicitly — use braces whenever a name is followed by
+  name-like characters.
+- **Shell vs environment variables.** `x=hello` lives only in that shell
+  process. `./args $x` works without `export` because the shell substitutes the
+  text before starting the program. `export` matters only when the program
+  itself reads the variable.
+- **Unquoted empty expansion → zero args; quoted → one empty arg.**
