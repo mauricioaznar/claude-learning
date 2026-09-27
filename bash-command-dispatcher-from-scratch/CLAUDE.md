@@ -264,6 +264,21 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   operator expected" / "too many arguments". `[[` is a bash keyword: no
   splitting/globbing inside, supports `&&`, `||`, `=~`. Inside both, `=` is
   comparison, never assignment.
+- **Why `[` and `[[` exist at all.** Bash has no boolean expressions — every
+  decision is "run a command, check its exit status". To ask "is x equal to
+  hello?" you need a *program* that answers via exit status: that's `test`,
+  and `[` is the same program under another name (it just demands a closing
+  `]` so `if [ … ]` looks familiar). Being a command, it gets arguments only
+  after the full pipeline has run — splitting, globbing, `>` as a redirect —
+  which is why it's easy to break. `[[` was added later as grammar, so bash
+  knows up front it's a condition and skips the dangerous steps. JS analogy:
+  `[` is a function call, `test(x, "=", "hello", "]")` — arguments are
+  evaluated before it runs, so it can't protect you; `[[` is an operator like
+  `typeof`, which is syntax and can therefore get special rules
+  (`typeof undeclaredVar` doesn't throw; passing it to a function does). Not a
+  closure — a closure is a function keeping access to variables from where it
+  was defined; "arguments evaluated first, then passed in" is just how every
+  call works.
 - **Expansion vs quoting.** Expansion = bash replacing `$x`, `$(cmd)`,
   `$((…))`, `*`, `~` with values *before* the command runs. Quotes don't make
   "strings" (everything is text); they control which characters are special and
