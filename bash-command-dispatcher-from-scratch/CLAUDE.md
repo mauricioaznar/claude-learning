@@ -31,7 +31,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `01-argv.sh` — a command receives a list, not a line; why `echo` hides it
 - ✅ `02-tokens.sh` — words vs operators (`;` `&&` `|` `<` `>`), tokenized first
 - ✅ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
-- ⬜ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
+- ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ⬜ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ⬜ `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
@@ -168,6 +168,24 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   rules; inner quote chars are just data, so `$x` still expands → `<'hello'>`.
 - **S3 quiz: `'cost $5, '" it's cheap"` gave two spaces** → both glued pieces
   carried a space at the join → keep it on one side only.
+- **S4 case 2: said splitting happens "inside the program"** → the program
+  only ever receives a finished argv → both tokenizing (typed spaces) and word
+  splitting (spaces from an expansion) are done by the shell, before exec.
+- **S4 case 4: guessed tokenizing trimmed `"  padded  "`** → the spaces came
+  out of `$z`, so it was word splitting → name the step by where the text came
+  from: typed → tokenizing, expanded → word splitting.
+- **S4 cases 1/4: recorded 4 spaces where the value had 2–3** → copied from
+  memory, not from the output. In a worksheet about whitespace, the count *is*
+  the result — copy it from the terminal.
+- **S4 case 6: `IFS=" "` gave `<a b c>` (no split)** → run in zsh, which
+  doesn't split unquoted expansions → re-ran inside `bash` → `<a> <b> <c>`.
+  Check the prompt (`bash-3.2$`) before any S4/S5 case.
+- **S4 case 6 (first draft): a test whose outcomes looked identical** →
+  `IFS=` vs whitespace on `a,b,c` both print `<a,b,c>`, so it proved nothing →
+  pick input where the competing hypotheses produce different output.
+- **S4 case 7: predicted "IFS cuts on unset variables"** → IFS is a set of
+  *characters*; expansion finishes (unset → nothing) before splitting runs →
+  `"a $unset c"` → `a  c`, and empty IFS cuts nothing → `<a  c>`.
 - **Claimed `set -u` treats empty as unset** → mixed it up with the colon in
   `${1:-x}` → `set -u` errors only on *unset*; set-but-empty passes.
 
@@ -277,3 +295,16 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   text before starting the program. `export` matters only when the program
   itself reads the variable.
 - **Unquoted empty expansion → zero args; quoted → one empty arg.**
+- **Word splitting** (after expansion, unquoted only): the shell cuts the
+  expanded text at characters in `IFS` (default: space, tab, newline). Runs of
+  IFS *whitespace* count as one separator, and leading/trailing whitespace is
+  dropped (`"  padded  "` → `padded`). Typed spaces are a different step —
+  tokenizing — and only quoting at the keyboard stops those.
+- **Empty word rule:** a word vanishes only if the *whole* word expands to
+  nothing unquoted: `$y` → 0 args, `"$y"` → 1 empty arg, `a$y` → `a`.
+- **`IFS` is a variable the splitting step reads**, not something the program
+  sees. `IFS=,` cuts on commas; `IFS=` (empty) turns splitting off entirely —
+  same effect as quoting, for every unquoted expansion (idiom: `IFS= read -r
+  line`). Change it inside `( … )` so the subshell's change doesn't leak.
+- **zsh doesn't word-split unquoted `$x`.** Run S4/S5 inside `bash`
+  (`/bin/bash` is 3.2 on macOS; fine for the sandbox).
