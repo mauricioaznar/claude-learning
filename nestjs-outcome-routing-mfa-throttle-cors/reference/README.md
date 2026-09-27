@@ -43,9 +43,33 @@ repos on 2026-09-26. Read it; don't edit it. Paths below mirror the originals.
 - `server/src/modules/auth/guards/allowed-origin.guard.ts` — the Origin check on cookie routes.
 - `server/src/modules/auth/refresh-token.service.ts` — `createSession`, rotation, `readActiveUser`.
 
+**Access token + guards (server)**
+- `server/src/common/constants/jwt.ts` (+ `env.ts`) — access TTL, refresh TTL, reuse grace window.
+- `server/src/modules/auth/strategies/jwt.strategy.ts` — Bearer token → `req.user`.
+- `server/src/modules/auth/guards/gql-auth.guard.ts` + `decorators/public.decorator.ts` — global guard, opt-out.
+- `server/src/modules/auth/decorators/current-user.decorator.ts`
+- `server/src/modules/auth/utils/refresh-token.util.ts` — opaque token generation + hashing.
+- `server/src/modules/auth/auth.resolver.ts`, `server/src/common/dto/entities/auth/auth.dto.ts`
+- `server/src/app.module.ts` — global guards, and WebSocket auth (`onConnect` stashes
+  `connectionParams`; `context` rebuilds `req.headers` so the same guard runs).
+- `server/src/db/migrations/1788804218804-CreateRefreshTokens.ts`,
+  `1789000000000-AddLoginLockoutColumns.ts` — the rest of the schema.
+
+**Client session lifecycle (the React half)**
+- `client/src/app/app/authorization-wrapper/authorization-wrapper.tsx` — boot: `bootstrapSession`
+  spends the refresh cookie once, then shows the app or the login machine.
+- `client/src/services/apollo/init-apollo-client.ts` — auth link (attach token) + error link
+  (401 → `refreshAccessToken` once → replay); WS `connectionParams`.
+- `client/src/app/app/providers/subscriptions-provider.tsx` — why subscriptions are boot-only
+  (frozen `connectionParams`, no refresh-and-replay over WS).
+- `client/src/app/app/inopack-drawer/inopack-drawer.tsx` — `logoutSession` (search for it; the rest is UI).
+- `client/src/services/auth/password-policy.ts`, `.../auth-screen-layout.tsx`, `client/src/index.tsx` (mounting).
+
 **Tests (useful as behavior specs)**
 - `server/src/modules/auth/auth.mfa.service.test.ts`
 - `server/src/modules/auth/utils/interstitial-token.util.test.ts`
+- `server/src/modules/auth/auth.controller.test.ts`, `auth.service.test.ts`
+- `server/src/modules/auth/utils/refresh-token.util.test.ts`, `mfa-code.util.test.ts`
 
 **Docs**
 - `docs/plans/archived/auth-refresh-throttling-mfa.md` — the technical plan (long).
@@ -54,5 +78,5 @@ repos on 2026-09-26. Read it; don't edit it. Paths below mirror the originals.
 - `docs/guides/authentication-mfa-learning-guide.md` — ⚠️ **stale**: says Phases 2–3
   aren't implemented, but the code above has both. Trust the code.
 
-Not copied: the rest of the app (Prisma schema, mail/logging modules, GraphQL
-resolvers, `.env`s). Follow imports into those only by name.
+Not copied: the rest of the app (Prisma schema, mail/logging modules, roles/users,
+non-auth GraphQL resolvers, `.env`s). Follow imports into those only by name.
