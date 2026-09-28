@@ -34,7 +34,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ✅ `06-brackets.sh` — `[` is a command, `[[` is grammar
-- ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
+- 🚧 `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
 - ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
 ## Warm-up
@@ -251,6 +251,12 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 - **S6 case 6: `ls` after `[[` showed `a`, credited to the wrong line** → the
   file was left over from `[ b > a ]` → `rm a` before re-running proved `[[`
   creates nothing. Same lesson as S2 case 3: clear fixtures between cases.
+- **S7 case 3: wrote that `true || ./args fallback` skipped because "the left
+  command returned 1"** → `true` exits 0; that's *why* `||` skipped → read the
+  status off the command, don't reuse the previous case's number.
+- **S7 case 4: predicted `false && ./args a || ./args b` runs nothing, "`&&`
+  ends the flow"** → `&&` only gates the one command to its right; the line
+  keeps going. `./args a` was skipped, so `||` still saw `false`'s 1 → `<b>`.
 
 ## Learnings
 
@@ -389,6 +395,13 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 - **The full order:** tokenizing → parsing → expansion → word splitting →
   globbing → quote removal → redirections set up → run. Quote removal only
   deletes typed quote characters; it never cuts a word.
+- **A skipped command leaves no status behind.** After `false && x`, `$?` is
+  `false`'s 1. Each `&&`/`||` looks only at the status of whatever last *ran*,
+  read left to right one pair at a time. Status 0 after `A || B` only says
+  *something* succeeded.
+- **`A && B || C` is not if/else:** C runs if A fails *or* if B fails. Use
+  `if A; then B; else C; fi`; the short form is fine only when B can't fail
+  (`echo`).
 - **Parsing sits between tokenizing and expansion.** Tokenizing only labels
   pieces (`>` is an operator). Parsing groups them: splits the line into
   simple commands at `|` `;` `&&` `||`, and inside each one sorts tokens into
