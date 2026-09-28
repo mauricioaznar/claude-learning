@@ -33,7 +33,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
 - ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
-- 🚧 `06-brackets.sh` — `[` is a command, `[[` is grammar
+- ✅ `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
 - ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
@@ -234,6 +234,23 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   true** → forgot S4's empty-word rule: an unquoted expansion that yields
   nothing vanishes (0 args) → `[` got `<=> <> <]>`, one operand short →
   `unary operator expected`.
+- **S6 case 5: predicted `[[ notes.txt == *.txt ]]` wouldn't match** →
+  reasoned "`[[` skips globbing, so no wildcards at all" → true, `[[` skips
+  *pathname* expansion (matching against files on disk), but the unquoted
+  right side of `==` is still a pattern, matched against the *left string*.
+  Quoting it (`"*.txt"`) makes it a literal → exit 1.
+- **S6 case 6: reasoned `[[ b > a ]]` "takes `> a` out, leaving `[[ b ]]`
+  with too few parameters"** → applied command rules to grammar: `[[` never
+  receives an argv, and the parser doesn't pull redirections out of it; `>`
+  inside is a string comparison → exit 0, no file created.
+- **S6 case 6: read `[[ b > a ]]` → 0 as "false"** → 0 is true; `>` asks
+  "does `b` sort after `a`?" — yes. Try `[[ a > b ]]` to see a 1.
+- **S6 case 6: said `>` is a redirection "because it's right after a
+  command"** → position doesn't matter; in *any* simple command the parser
+  removes every redirection wherever it sits (`> a [ b ]` behaves the same).
+- **S6 case 6: `ls` after `[[` showed `a`, credited to the wrong line** → the
+  file was left over from `[ b > a ]` → `rm a` before re-running proved `[[`
+  creates nothing. Same lesson as S2 case 3: clear fixtures between cases.
 
 ## Learnings
 
@@ -369,9 +386,33 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   line`). Change it inside `( … )` so the subshell's change doesn't leak.
 - **zsh doesn't word-split unquoted `$x`.** Run S4/S5 inside `bash`
   (`/bin/bash` is 3.2 on macOS; fine for the sandbox).
-- **The full order:** tokenizing → expansion → word splitting → globbing →
-  quote removal → run. Quote removal only deletes typed quote characters; it
-  never cuts a word.
+- **The full order:** tokenizing → parsing → expansion → word splitting →
+  globbing → quote removal → redirections set up → run. Quote removal only
+  deletes typed quote characters; it never cuts a word.
+- **Parsing sits between tokenizing and expansion.** Tokenizing only labels
+  pieces (`>` is an operator). Parsing groups them: splits the line into
+  simple commands at `|` `;` `&&` `||`, and inside each one sorts tokens into
+  *words* and *redirections*. If the first token is a keyword like `[[`,
+  `if`, `for`, the parser builds that construct instead of a simple command —
+  which is how `[[` gets its own rules.
+- **Redirections can sit anywhere in a simple command.** The parser removes
+  each operator plus the word after it; the remaining words are the command.
+  `[ b > a ]` = run `[ b ]` with stdout → file `a`. `> a echo hi` works too
+  (Bourne-shell design: one simple rule instead of "only at the end"). The
+  one idiomatic use: input first, so data reads left to right —
+  `< data.csv sort | uniq`. A redirection belongs to the simple command it
+  sits in, not "the first command".
+- **`>`/`<` connect a command to a file; `|` connects two commands.**
+  `< data.csv > sort | uniq` has no command at all — it creates an empty file
+  named `sort`. `|` (pipe: stdout → next stdin, both run at once) is not `||`
+  (run next only if the previous failed).
+- **`sort < f` vs `sort f`:** the shell opens the file and `sort` reads stdin
+  (never learns the name), vs. `sort` opens it itself. A missing file's error
+  comes from bash in the first case, from `sort` in the second.
+- **`[ str ]` with one argument tests "non-empty"** (= `[ -n str ]`). Only the
+  empty string is false — `[ 0 ]` and `[ false ]` are true.
+- **Inside `[[ ]]`, `==`'s unquoted right side is a pattern** matched against
+  the left string (not against files). Quote it for a literal comparison.
 - **Glob characters:** `?` = exactly one char (a space counts), `*` = zero or
   more, `[ab]` / `[!a]` = one char from / not from a set. `*` and `?` skip a
   leading `.` (dotfiles) unless the pattern starts with `.`.

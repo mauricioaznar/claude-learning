@@ -53,4 +53,6 @@
 #    [[ b > a ]]; echo $?; ls
 #    What did each one do? Which one touched the filesystem?
 # predict:
-# actual:
+# actual 1st: output notihgn, exit status is 0. Echo $? -> 0, becuase non empty string are true. [ is a command and tokenizing sees > an operator. > is treated as redirection when a simple command shows, position doesnt matter..  ls showed a
+# actual 2nd: output nothing, exist status is 0. both a and b got compared and resulted in true, b comes after a. Which i blieve is a valid compairson. exit status is 0. echo $?. ls showed nothing
+# What did each one do? Which one touched the filesystem?. First one was considered as a redirection and a was created. second was considrered a string comparison
