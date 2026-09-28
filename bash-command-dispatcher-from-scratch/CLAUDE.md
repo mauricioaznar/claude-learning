@@ -33,7 +33,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `03-quoting.sh` — `'…'` vs `"…"` vs none, quote removal, quotes inside quotes
 - ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
-- ⬜ `06-brackets.sh` — `[` is a command, `[[` is grammar
+- 🚧 `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ⬜ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
 - ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
@@ -216,6 +216,24 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   an `else` printing `<>`, which is what `"<$word>"` already gives for an empty
   word → deleted the `if`. Substitute the edge value by hand before adding a
   branch for it; quoting already handles empty.
+- **S6 case 1: "actual" said `type test` → `[ is a shell builtin`, and
+  `type [[` → `is a shell keyword` (no name)** → written from memory, not
+  copied; `type` always echoes the name it was asked about → re-copy from the
+  terminal. Same miss as S4 cases 1/4.
+- **S6 case 2: predicted `[a = a]` would assign `a]` to `[a`** → saw an `=`
+  and read it as assignment → assignment is recognized only by shape
+  (`name=value`, no spaces, valid name); a spaced `=` is just an argument, and
+  the first word `[a` is the command name → `[a: command not found`. Same
+  rule as `count = 1` in Learnings.
+- **S6 case 3: predicted `[[` "skips expansion"** → blamed the whole
+  expansion step for `[`'s failure → `[[ $x = "hello world" ]]` exited 0, and
+  that's only possible if `$x` *was* expanded (literal `$x` ≠ `hello world`).
+  `[[` expands but skips word splitting (and globbing); splitting is what
+  turned one value into `<hello> <world>` and gave `[` 5 args instead of 4.
+- **S6 case 4: predicted `[ $y = "" ]` (y empty) "expands, isn't split" →
+  true** → forgot S4's empty-word rule: an unquoted expansion that yields
+  nothing vanishes (0 args) → `[` got `<=> <> <]>`, one operand short →
+  `unary operator expected`.
 
 ## Learnings
 
