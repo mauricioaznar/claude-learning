@@ -34,7 +34,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `04-splitting.sh` — word splitting of unquoted expansions; empty → zero args
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ✅ `06-brackets.sh` — `[` is a command, `[[` is grammar
-- 🚧 `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
+- ✅ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
 - ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
 ## Warm-up
@@ -257,6 +257,14 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
 - **S7 case 4: predicted `false && ./args a || ./args b` runs nothing, "`&&`
   ends the flow"** → `&&` only gates the one command to its right; the line
   keeps going. `./args a` was skipped, so `||` still saw `false`'s 1 → `<b>`.
+- **S7 case 5: read `2>/dev/null` as "exit status 2", predicted `|| echo "not
+  there"` wouldn't run** → the `2` in `2>` is a file descriptor (stderr), not a
+  status. A redirection changes where output goes, never the exit status: `ls`
+  still exited 1, so `||` ran the echo.
+- **S7 case 6: called `ls` "a command of bash" and said the OS chose its exit
+  code** → `ls` is a separate program (`/bin/ls`) that bash starts; `type ls`
+  vs `type exit` shows the difference. Its authors picked the code (BSD `ls` on
+  macOS says 1, GNU `ls` on Linux says 2). The kernel only delivers the number.
 
 ## Learnings
 
@@ -355,6 +363,11 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   (fd 2, `2>`). `>>` appends instead of truncating.
 - **List operators decide on exit status only:** `;`/newline → always run the
   next; `&&` → only if the previous exited 0; `||` → only if non-zero.
+- **Who picks an exit status: the program that exits.** It passes a number
+  to the kernel as it ends (`exit 7`); the kernel hands it to the parent
+  process, and the parent bash stores it in `$?`. Only 0 vs non-zero is
+  universal; which non-zero value means what is up to each program (see its
+  man page). `exit` is a builtin — it has to be, since it ends bash itself.
 - **Terminal is zsh, worksheets target bash.** Tokenizing/redirection behave
   the same; splitting (S4) and globbing (S5) don't — run those with `bash`.
 - **Quotes are rules for the text inside, then deleted.** `'…'`: nothing

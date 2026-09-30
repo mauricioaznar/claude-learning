@@ -36,10 +36,15 @@
 # 5. ls missing-file; echo $?
 #    and     ls missing-file 2>/dev/null || echo "not there"
 #    What is the status number? What did 2>/dev/null hide?
-# predict:
-# actual:
+# predict: i didnt know what "ls file" did. neither I dont know what does the other command with 2>/dev/null does. I already saw that echo #? after ls missing-file is 1. so the second command wont throw exit status 2 and 2>/dev/null wont do nothing. Echo "not there" wont run.
+# actual: ls missing-file; echo $?. Echo shows 1, so that means the ls missing-file command fails with.
+# actual 2nd. echo shows "not there" after the previous command. seems like 2>/dev/null redirects the output of stderr into /dev/null a file that wont be created.
+# what did 2>/dev/null hide? it hid the error output, not the exit status.
+# ls missing-file -> ls: missing-file: No such file or directory
+# ls missing-file 2>/dev/null ->
 
 # 6. bash -c 'exit 7'; echo $?
-#    Where does the number come from?
-# predict:
-# actual:
+# predict: echo $? prints 7. I think exit is a command its purpose its to exit with status $1
+# actual: bash -c 'exit 7'; echo $?; -> 7
+# Who chooses the number? the program that is exiting
+
