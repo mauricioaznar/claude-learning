@@ -9,17 +9,22 @@
 # It captures stdout only: the exit status goes to $?, not into the text.
 
 # 1. ./args "$(echo hello)"        and        now="$(date +%H:%M)"; ./args "$now"
-# predict:
-# actual:
+# predict #1: ./args "$(echo hello)" will runn echo inside of the parenthesis before the bash pipeline prepares the arguments for ./arg. output: args count: 1 <hello>.
+# predict #2: the inner command substitution runs. now="08:11" -> ./args "08:11" -> args count: 1 <08:11>
+# actual #1: args count 1: <hello>
+# actual #2: args count 1: <20:13>
+
 
 # 2. ./args $(echo one two)        vs        ./args "$(echo one two)"
-# predict:
-# actual:
+# predict: first one will see args count 2: <one> <two>. second one will see args count 1: <one two>. The difference is that after the child process run the final result on the second one is "one two". which gets passed as a single argument to ./args
+# actual 1st: args count 2: <one> <two>
+# actual 2nd: args count 1: <one two>
 
 # 3. ./args "$(printf 'a\nb\n\n\n')"
 #    How many lines end up inside the one argument? What happened to the rest?
-# predict:
-# actual:
+# predict: 5 lines. <a> <b> <> <> <>
+# actual:args count 1: <a
+# b>
 
 # 4. cd glob-playground
 #    ../args $(echo '*.txt')        vs        ../args "$(echo '*.txt')"

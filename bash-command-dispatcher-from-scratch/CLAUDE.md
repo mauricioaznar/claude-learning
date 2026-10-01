@@ -35,7 +35,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ✅ `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ✅ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
-- ⬜ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
+- 🚧 `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
 ## Warm-up
 
@@ -265,10 +265,36 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   code** → `ls` is a separate program (`/bin/ls`) that bash starts; `type ls`
   vs `type exit` shows the difference. Its authors picked the code (BSD `ls` on
   macOS says 1, GNU `ls` on Linux says 2). The kernel only delivers the number.
+- **S8 case 1: predicted unquoted `now=$(date '+%H %M')` would break** →
+  applied the literal-text rule (`x=a b` splits at the typed space) to an
+  expansion result. The space from `date` appears after the word boundaries
+  are already fixed, and assignments skip word splitting and globbing → the
+  quotes on the assignment are optional; the ones on `"$now"` are not.
+- **S8 case 3: predicted `./args "$(printf 'a\nb\n\n\n')"` gives five args
+  `<a> <b> <> <> <>`** → treated each newline as an argument boundary, but the
+  `$(…)` was quoted, so nothing was split; and `$(…)` strips *all* trailing
+  newlines → one arg, `<a⏎b>`: the inner newline stays, the last three go.
 
 ## Learnings
 
 *concepts that stuck, in plain words, for a cold reader.*
+
+- **Assignments don't split or glob.** In `x=$v` or `x=$(cmd)` the value is
+  stored intact, spaces and `*` included, because the right side of an
+  assignment skips word splitting and pathname expansion. A *typed* space still
+  ends the word (`x=a b` runs `b`), since tokenizing happens before expansion.
+  Quoting the assignment is optional but a harmless habit; quoting the *use*
+  (`"$x"`) is what matters.
+- **Word splitting throws the separators away.** Unquoted `$(cmd)` is split
+  on `IFS` (space, tab, newline by default), and a run of those characters
+  counts as one cut. So `$(echo 'one   two')` gives `<one> <two>`; the three
+  spaces are gone for good. Quoted, they survive: `<one   two>`. Unquoted
+  `$(…)` is a lossy way to turn output into a list.
+- **`$(…)` strips every trailing newline, and only trailing ones.** Nearly all
+  commands end output with `\n` (`echo`, `date`, `pwd`); without the strip,
+  `"in $(pwd) now"` would break across lines. Newlines in the middle are kept.
+  To keep trailing ones, append a sentinel and cut it off:
+  `x=$(cmd; printf .); x=${x%.}`.
 
 - **`"$@"` vs `$@`.** Quoted, each positional parameter expands as its own
   intact word — an argument containing a space stays one item. Unquoted,
