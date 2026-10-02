@@ -35,7 +35,7 @@ S1–S6 cover everything 3.1 needs; S7–S8 were added on request.
 - ✅ `05-globbing.sh` — pathname expansion, no-match passthrough, `*` from a variable
 - ✅ `06-brackets.sh` — `[` is a command, `[[` is grammar
 - ✅ `07-exit-status.sh` — `$?`, `&&` / `||`, why `A && B || C` isn't if/else
-- 🚧 `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
+- ✅ `08-command-substitution.sh` — `$(…)`: stdout capture, splitting, nesting
 
 ## Warm-up
 
@@ -274,6 +274,11 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   `<a> <b> <> <> <>`** → treated each newline as an argument boundary, but the
   `$(…)` was quoted, so nothing was split; and `$(…)` strips *all* trailing
   newlines → one arg, `<a⏎b>`: the inner newline stays, the last three go.
+- **S8 case 4: predicted unquoted `$(echo '*.txt')` gives `<d> <e.txt>` for
+  the file `d e.txt`** → assumed glob results get split. Order is expansion →
+  word splitting → pathname expansion → quote removal, each step runs once,
+  so splitting is already done when the glob produces `d e.txt` → one arg
+  `<d e.txt>`. (That's why `for f in *` is safe with spaces.)
 
 ## Learnings
 
@@ -295,6 +300,17 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   `"in $(pwd) now"` would break across lines. Newlines in the middle are kept.
   To keep trailing ones, append a sentinel and cut it off:
   `x=$(cmd; printf .); x=${x%.}`.
+- **Glob results are never split.** Order is expansion → splitting →
+  globbing → quote removal, each once. A glob match like `d e.txt` arrives
+  after splitting is done, so it stays one arg — `for f in *` is space-safe.
+- **`$(…)` captures stdout (fd 1) only.** Errors go to stderr (fd 2), which
+  still points at the terminal, so `out=$(ls missing)` prints the error and
+  leaves `out` empty. Capture both: `$(cmd 2>&1)`. The exit status isn't in
+  the text; it's in `$?` — and a bare assignment `x=$(cmd)` takes `cmd`'s
+  status.
+- **`$(…)` opens a new quoting context.** Quotes inside pair only with each
+  other, so `"in $(basename "$(pwd)")"` is one word; nest freely. Backticks
+  can't do this without escaping — prefer `$(…)`.
 
 - **`"$@"` vs `$@`.** Quoted, each positional parameter expands as its own
   intact word — an argument containing a space stays one item. Unquoted,
