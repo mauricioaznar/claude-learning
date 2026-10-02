@@ -39,6 +39,7 @@
 # predict: my guess is that out contains nothing. so its empty. out -> <> after the last command. status is 1 or 2 depending on the bash programm.
 # actual out="$(ls missing-file)": ls: cannot access 'missing-file': No such file or directory
 # actual echo "status=$? out<$out>": status=2 out=<>
+# error went to stderr (2)
 
 # 6. ./args "you are in $(basename "$(pwd)")"
 #    Quotes inside $(...) inside quotes: how many args, and does the inner
