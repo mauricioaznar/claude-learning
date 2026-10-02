@@ -50,7 +50,7 @@ subfolder when another command needs its own primitives.
 - ✅ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
 - ✅ `02-defaults.sh` — `${1:-default}` and `set -u`
 - ✅ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
-- ⬜ `03-1-predictions.sh` — predict-only: expansion pipeline vs quoting, `[ ]` (command) vs `[[ ]]` (grammar)
+- 🚧 `03-1-predictions.sh` — predict-only: expansion pipeline vs quoting, `[ ]` (command) vs `[[ ]]` (grammar)
 - ⬜ `04-case.sh` — `case` statement
 - ⬜ `05-shift.sh` — `shift`
 - ⬜ `06-functions.sh` — functions + heredoc
@@ -279,6 +279,15 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   word splitting → pathname expansion → quote removal, each step runs once,
   so splitting is already done when the glob produces `d e.txt` → one arg
   `<d e.txt>`. (That's why `for f in *` is safe with spaces.)
+- **3.1 case 2: counted 0 args for `[ -n $x ]` with `x=""`, then said `-n`
+  "is empty"** → forgot `-n` is itself an arg. Unquoted empty `$x` vanishes,
+  so `[` gets one arg, the string `-n`; with one arg `[` tests "non-empty?",
+  and `-n` is two chars → always true. Fix: `[ -n "$x" ]` or `[[ -n $x ]]`.
+- **3.1 case 6: read `[ a < b ]` as "read from a, write into b, creating
+  b"** → mixed up `<` with `>`. `< b` makes the command's stdin read *from*
+  file `b`; nothing is written or created, and `a` isn't involved. `b`
+  missing → `b: No such file or directory`, `[` never runs. `b` present → `[`
+  gets the one arg `a` → non-empty → true.
 
 ## Learnings
 
