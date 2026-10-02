@@ -1,4 +1,4 @@
-# claude-learning
+# programming-patterns
 
 A learning lab. Each subfolder is a self-contained side project for learning one
 topic by building it from scratch. Nothing here is production code — the goal is
@@ -76,5 +76,8 @@ end, and keep the ones that were embarrassing — those are the ones that recur.
   not the opening move. Finding it himself is the point of the exercise.
 - **Ask before answering.** When there's a design fork (status codes, data
   shapes), pose it as a question and ask for his reasoning first.
+- **Short answers, one case at a time.** Mau answers worksheets case by case;
+  review only the case in front of you, in a few lines, then stop. He asks
+  when he wants more. Long replies make him scroll and match points to cases.
 - **Plain language.** No filler vocabulary. Precise technical terms are good and
   worth teaching; decorative metaphors are not.
