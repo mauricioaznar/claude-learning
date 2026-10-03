@@ -41,6 +41,9 @@
 
 # 6. [ a < b ]      vs      [[ a < b ]]
 #    What does each one do? Which one might touch the filesystem?
-# answer: first one might touch the file systme and write a file named b. second one is comparison by default
-# first one means read input from a and write it down in b
+# answer first: file b becomes the stdin of [, [ doesnt read stdin so it gets ignored. final command after redirection becomes [ a ], a non empty word becomes true, so final result is exit status 0 -> true if b were to exist. however the command [ is never run, since redirection fails since < b doesnt exist.
+# status of [ a < b ] is 1
+# answer second [[ is a keyword and doesnt do redirection, it applies conditional expressions only and [[ a < b ]] compares a vs b in alfabetical order. a is before b, so comparision results in 0 -> true
+# complementary answer first: < b fails because b doesnt exist. bash cant read the file.
+# which one might touch the filesystem? the first tries to read b on current directory. b doesnt get created
 

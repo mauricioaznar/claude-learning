@@ -50,8 +50,8 @@ subfolder when another command needs its own primitives.
 - ✅ `01-args.sh` — positional arguments (`$1`, `$#`, `$@`)
 - ✅ `02-defaults.sh` — `${1:-default}` and `set -u`
 - ✅ `03-conditionals.sh` — `if`/`[[ ]]` and exit codes
-- 🚧 `03-1-predictions.sh` — predict-only: expansion pipeline vs quoting, `[ ]` (command) vs `[[ ]]` (grammar)
-- ⬜ `04-case.sh` — `case` statement
+- ✅ `03-1-predictions.sh` — predict-only: expansion pipeline vs quoting, `[ ]` (command) vs `[[ ]]` (grammar)
+- ✅ `04-case.sh` — `case` statement
 - ⬜ `05-shift.sh` — `shift`
 - ⬜ `06-functions.sh` — functions + heredoc
 - ⬜ `07-location.sh` — script self-location (`${BASH_SOURCE[0]}`)
@@ -288,6 +288,17 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   file `b`; nothing is written or created, and `a` isn't involved. `b`
   missing → `b: No such file or directory`, `[` never runs. `b` present → `[`
   gets the one arg `a` → non-empty → true.
+- **`04`: `ls missing-file 2&>1` printed nothing** → meant "stdout → stderr",
+  but a digit is an fd only when it touches `>`/`<`; here `2` touches `&`, so
+  it became an extra arg to `ls`, and `&>1` sent both streams into a *file*
+  named `1` → `>&2`. Also had the direction backwards (`2>&1` is stderr →
+  stdout).
+- **`04`: `exec ls …; exit 0` — the `exit` never ran** → `exec` replaces the
+  shell with the program, so nothing after it exists; the script's status was
+  `ls`'s. (And `exit 0` was the wrong status for an error anyway) →
+  `echo "…" >&2; exit 1`.
+- **`04`: unknown commands exited 0 silently** → the "fallback" branch matched
+  only the literal word `fallback` → `*)` matches anything.
 
 ## Learnings
 
@@ -396,6 +407,17 @@ new-feature / new-fix, ⬜ worktree-init, ⬜ statusline.
   empty string. `./args` → `$#` is 0 and `$1` is *unset*. Bash's terms are
   set/unset, not assigned/unassigned.
 - **stderr:** `>&2` redirects a command's stdout to fd 2. Errors go there.
+- **`N>&M` vs `&>file`.** `N>&M` points fd N wherever fd M points (`>&2` =
+  stdout → stderr; `2>&1` = stderr → stdout). The `&` *after* `>` marks M as
+  an fd, not a filename. `&>file` sends stdout+stderr into a file. A digit is
+  an fd only when it touches `>`/`<` — `1&>2` is the arg `1` plus a file `2`.
+- **`exec cmd` replaces the shell with `cmd`** (same PID); no child process,
+  nothing after it runs, and the script's exit status is `cmd`'s. It can't run
+  builtins, so `exec echo` runs `/bin/echo`. The dispatcher uses it to hand
+  off to a subcommand script.
+- **`case` shape.** `pattern) cmds ;;` per branch, `*)` as catch-all (put it
+  last — first match wins), `a|b)` for alternatives. Patterns are globs, not
+  regexes. Give every branch `;;`, even the last.
 - **macOS `/bin/bash` is 3.2.** Unbound-variable exit code differs (127 vs 1),
   and `"$@"` with no args errors under `set -u` there (fixed in 4.0).
 - **Tokenizing happens first.** Before any `$` or `*` expansion, the shell

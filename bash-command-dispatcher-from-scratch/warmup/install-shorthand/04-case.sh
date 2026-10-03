@@ -8,3 +8,12 @@
 # This is the shape the real dispatcher will use to route to the right
 # command — here just print a message per branch, no routing to other files
 # yet.
+command=${1:-help}
+
+case "$command" in
+  command-1) exec echo "1";;
+  command-2) exec echo "2";;
+  command-3) exec echo "3";;
+  help) echo 'help' ; exit 0;;
+  *) echo "failure: unknown command" 1>&2; exit 1;
+esac

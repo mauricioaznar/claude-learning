@@ -12,7 +12,8 @@ set -u
 
 if [[ "${1:-}" = "ok" ]]
 then
-  echo "success" # $? 0
+  echo "success"; # $? 0;
+  exit 0;
 else
   echo "failure" >&2
   exit 1 # $? 1
